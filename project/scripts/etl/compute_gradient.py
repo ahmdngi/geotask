@@ -113,8 +113,14 @@ def main():
     if gdf.empty:
         print("  No valid geometries after cleaning")
         return
-    gdf.geometry = gdf.geometry.simplify(2.0)
+    gdf.geometry = gdf.geometry.simplify(10.0)
+
+    # Drop tiny polygons (< 100 m²)
+    before = len(gdf)
+    gdf = gdf[gdf.geometry.area >= 100]
     gdf = gdf[gdf.geometry.is_valid & ~gdf.geometry.is_empty]
+    if before != len(gdf):
+        print(f"  Removed {before - len(gdf)} tiny polygons")
     gdf.to_file(out_vector, driver="GeoJSON", encoding="utf-8")
 
     area_km2 = gdf.geometry.area.sum() / 1e6

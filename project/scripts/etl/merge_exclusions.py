@@ -1,11 +1,9 @@
 """
 Merge all exclusion zones into a single layer with exclusion_type field.
+Each exclusion type is DISSOLVED into one multipolygon before merging.
 
 Inputs:  Natura2000, flood zones (4 layers), nature reserves (4 layers)
 Output:  data/etl/exclusions/{CITY}_FINLAND_exclusion_zones.geojson (EPSG:3067)
-
-Each feature gets an `exclusion_type` field identifying its category.
-No filtering — all overlapping zones are preserved.
 """
 
 import sys
@@ -18,12 +16,11 @@ ROOT = SCRIPT_DIR.parent.parent
 sys.path.insert(0, str(ROOT))
 from config.config import AOI_CITY
 
-RAW_DIR = ROOT / "data" / "raw"
+CLIP_DIR = ROOT / "data" / "etl" / "clipped"
 EXCL_DIR = ROOT / "data" / "etl" / "exclusions"
 TARGET_CRS = "EPSG:3067"
 
 EXCLUSION_LAYERS = [
-    # (filename_contains, exclusion_type)
     ("natura2000", "natura2000"),
     ("flood_river_100a", "flood_river_100a"),
     ("flood_river_250a", "flood_river_250a"),
@@ -37,9 +34,13 @@ EXCLUSION_LAYERS = [
 
 
 def find_layer(pattern: str) -> Path | None:
-    """Find a raw data file matching pattern."""
-    for f in RAW_DIR.iterdir():
+    """Find a clipped file matching pattern."""
+    for f in sorted(CLIP_DIR.iterdir()):
         if pattern in f.name and f.suffix == ".geojson":
+            return f
+    # Fallback to raw
+    for f in sorted(Path(__file__).resolve().parent.parent.parent.glob("data/raw/*.geojson")):
+        if pattern in f.name:
             return f
     return None
 
@@ -48,8 +49,7 @@ def main():
     EXCL_DIR.mkdir(parents=True, exist_ok=True)
     out_path = EXCL_DIR / f"{AOI_CITY}_FINLAND_exclusion_zones.geojson"
 
-    all_gdfs = []
-    found = 0
+    dissolved = []
 
     for pattern, excl_type in EXCLUSION_LAYERS:
         fpath = find_layer(pattern)
@@ -73,35 +73,27 @@ def main():
         elif gdf.crs.to_string() != TARGET_CRS:
             gdf = gdf.to_crs(TARGET_CRS)
 
-        gdf["exclusion_type"] = excl_type
-        # Keep only essential fields + original attributes
-        gdf["_source_file"] = fpath.name
-        all_gdfs.append(gdf)
-        found += 1
-        print(f"  {excl_type}: {len(gdf)} features ({fpath.name})")
+        before = len(gdf)
 
-    if not all_gdfs:
-        print("  No exclusion layers found. Run fetch scripts first.")
+        # Dissolve all features of this type into one multipolygon
+        gdf["exclusion_type"] = excl_type
+        gdf["_source_file"] = fpath.name
+        dissolved_gdf = gdf.dissolve(by="exclusion_type", aggfunc="first").reset_index()
+
+        dissolved.append(dissolved_gdf)
+        after = len(dissolved_gdf)
+        print(f"  {excl_type}: {before} → {after} feature(s) (dissolved)")
+
+    if not dissolved:
+        print("  No exclusion layers found.")
         sys.exit(0)
 
-    merged = gpd.pd.concat(all_gdfs, ignore_index=True)
-
-    # Simplify: keep id/name if they exist, + exclusion_type + _source_file
-    keep_cols = ["exclusion_type", "_source_file"]
-    for col in ["id", "name", "natura_layer", "sitecode", "sitename"]:
-        if col in merged.columns:
-            keep_cols.append(col)
-
-    cols_to_drop = [c for c in merged.columns if c not in keep_cols and c != "geometry"]
-    if cols_to_drop:
-        merged.drop(columns=cols_to_drop, inplace=True)
-
+    merged = gpd.pd.concat(dissolved, ignore_index=True)
     merged.to_file(out_path, driver="GeoJSON", encoding="utf-8")
 
-    counts = merged["exclusion_type"].value_counts()
     print(f"\n  Merged exclusion zones: {len(merged)} total features")
-    for typ, cnt in counts.items():
-        print(f"    {typ}: {cnt}")
+    for typ in merged["exclusion_type"]:
+        print(f"    {typ}")
     print(f"  Saved: {out_path.name}")
 
 
