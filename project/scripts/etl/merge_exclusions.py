@@ -79,11 +79,14 @@ def main():
     merged["exclusion_type"] = "exclusion_zone"
     merged["_source_file"] = "merged"
 
+    # Area in projected CRS before reprojecting to 4326
+    area_km2 = merged.geometry.area.iloc[0] / 1e6 if not merged.empty else 0.0
+
     merged = merged.to_crs("EPSG:4326")
     merged.to_file(out_path, driver="GeoJSON", encoding="utf-8")
 
     print(f"\n  Merged: 1 feature (all zones dissolved)")
-    print(f"  Area:   {merged.geometry.area.iloc[0] / 1e6:,.0f} km²")
+    print(f"  Area:   {area_km2:,.0f} km²")
     print(f"  Saved:  {out_path.name}")
 
 
