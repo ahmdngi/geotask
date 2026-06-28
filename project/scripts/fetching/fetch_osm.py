@@ -32,7 +32,7 @@ LAYERS = {
     "power_lines": {"power": "line"},
     "substations": {"power": "substation"},
     "power_plants": {"power": ["plant", "generator"]},
-    "data_centers": {"datacenter": "yes", "building": "data_center"},
+    "data_centers": {"building": "datacenter"},
 }
 
 
@@ -84,7 +84,7 @@ def classify_element(el: dict) -> list[str]:
         labels.append("substations")
     if power in ("plant", "generator"):
         labels.append("power_plants")
-    if tags.get("datacenter") == "yes" or tags.get("building") == "data_center":
+    if tags.get("building") == "datacenter":
         labels.append("data_centers")
     return labels
 
@@ -121,10 +121,9 @@ def main():
         '  way["power"="plant"];'
         '  node["power"="generator"];'
         '  way["power"="generator"];'
-        '  node["datacenter"~"yes"];'
-        '  way["datacenter"~"yes"];'
-        '  node["building"="data_center"];'
-        '  way["building"="data_center"];'
+        '  node["building"="datacenter"];'
+        '  way["building"="datacenter"];'
+        '  relation["building"="datacenter"];'
         ');'
         'out geom;'
     )
