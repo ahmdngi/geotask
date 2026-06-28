@@ -85,6 +85,7 @@ class PickerHandler(SimpleHTTPRequestHandler):
                     cwd=_PROJECT_ROOT,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
                     timeout=600,
                 )
 
@@ -93,7 +94,15 @@ class PickerHandler(SimpleHTTPRequestHandler):
                     for line in lines[-3:]:
                         print(f"  {line}")
                 else:
-                    print(f"  ❌ {result.stderr[:200]}")
+                    print(f"  ❌ Script failed (exit code {result.returncode})")
+                    stderr = result.stderr.strip()
+                    stdout = result.stdout.strip()
+                    if stderr:
+                        print(f"  Stderr: {stderr[:500]}")
+                    if stdout:
+                        last = [l for l in stdout.split("\n") if l.strip()][-3:]
+                        for line in last:
+                            print(f"  {line}")
                 print()
 
             print(f"{'═' * 50}")
