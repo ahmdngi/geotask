@@ -5,7 +5,7 @@ Source: MML OGC API Features (requires MML_KEY in config/keys.json)
 Native CRS: WGS84 by default, request EPSG:3067 for metric geometry
 Output: data/raw/{CITY}_FINLAND_mml_land_parcels.geojson (EPSG:3067)
 
-Filters to >= 10 ha during pagination (no GeoPandas, no full-load).
+Filters to >= 10 ha using the API's Area_ha field during pagination.
 """
 
 import json
@@ -52,11 +52,12 @@ def fetch_large_parcels(bbox_3067: str) -> list[dict]:
     )
 
     page = 0
+    area_field = "Area_ha"  # default, overridden on page 1
     while url:
         page += 1
         resp = requests.get(url, auth=(MML_KEY or "", ""), timeout=120)
         if resp.status_code == 401:
-            print("  ERROR: MML API key rejected. Set MML_KEY env var.")
+            print("  ERROR: MML API key rejected.")
             sys.exit(1)
         if resp.status_code != 200:
             print(f"  MML error {resp.status_code} on page {page}: {resp.text[:200]}")
@@ -67,10 +68,28 @@ def fetch_large_parcels(bbox_3067: str) -> list[dict]:
         if not features:
             break
 
+        # On page 1, sniff the actual field name for area
+        if page == 1 and features:
+            sample = features[0].get("properties", {})
+            # Try common field names
+            area_keys = ["Area_ha", "area_ha", "PintaAla", "pintaala", "pinta_ala", "area", "hehtaari"]
+            found_key = None
+            for k in area_keys:
+                if k in sample and sample[k] is not None:
+                    found_key = k
+                    break
+            if found_key is None:
+                available = list(sample.keys())[:15]
+                print(f"  ERROR: No area field found in API response. Available fields: {available}")
+                print(f"  First feature sample: {sample}")
+                sys.exit(1)
+            print(f"  Using area field: '{found_key}'")
+            area_field = found_key
+
         kept = 0
         for f in features:
             props = f.get("properties", {})
-            ha = props.get("Area_ha")
+            ha = props.get(area_field)
             if ha is None:
                 continue
             ha = float(ha)
@@ -80,6 +99,10 @@ def fetch_large_parcels(bbox_3067: str) -> list[dict]:
                 props["area_ha"] = round(ha, 1)
                 all_large.append(f)
                 kept += 1
+
+        if kept == 0 and page >= 3:
+            print(f"  Page {page}: {len(features)} features, 0 kept — stopping early (no >=10 ha parcels in first 3 pages)")
+            break
 
         print(f"  Page {page}: {len(features)} features -> {kept} kept (total: {len(all_large)})")
 
@@ -126,7 +149,6 @@ def main():
 
     print(f"\n  Parcels >= 10 ha:  {len(large_parcels)}")
     print(f"  Largest:           {max(areas):.0f} ha")
-    print(f"  CRS:               EPSG:3067 (native)")
     print(f"  Saved:             {out_path.name}")
 
 
