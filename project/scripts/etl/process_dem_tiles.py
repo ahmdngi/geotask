@@ -114,7 +114,30 @@ def main():
         s.close()
 
     mb = out.stat().st_size / 1e6
-    print(f"  Saved: {out.name} ({mb:.1f} MB)")
+    print(f"  Saved: {out.name} ({mb:.1f} MB) — for analysis")
+
+    # ── Polygonize merged mask → GeoJSON (single operation on tiny raster) ──
+    print("Polygonizing mask to GeoJSON...")
+    from rasterio.features import shapes
+    from shapely.geometry import shape, mapping
+    from shapely.ops import unary_union, transform as shp_transform
+    import pyproj
+    polys = []
+    for geom, val in shapes(mosaic[0], mask=mosaic[0], transform=xform):
+        if val == 1:
+            polys.append(shape(geom).simplify(5))
+    if polys:
+        merged = unary_union(polys).simplify(10)
+        proj = pyproj.Transformer.from_crs("EPSG:3067", "EPSG:4326", always_xy=True).transform
+        merged_wgs84 = shp_transform(proj, merged)
+        fc = {"type": "FeatureCollection",
+              "features": [{"type": "Feature", "geometry": mapping(merged_wgs84), "properties": {}}]}
+        geojson_path = SUIT_DIR / f"{AOI_CITY}_FINLAND_gradient_suitable_8pct.geojson"
+        import json
+        with open(geojson_path, "w", encoding="utf-8") as f:
+            json.dump(fc, f)
+        kb = geojson_path.stat().st_size / 1024
+        print(f"  GeoJSON: {geojson_path.name} ({kb:.0f} KB) — for viewing")
 
     total = time.time() - t0
     print(f"\nDone in {total:.0f}s")
