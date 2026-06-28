@@ -6,7 +6,7 @@ GeoJSON spec compliance so ArcGIS/QGIS can display it correctly."""
 
 import json
 import sys
-import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import requests
@@ -20,8 +20,9 @@ if str(_ROOT) not in sys.path:
 from config.config import AOI_BBOX_WGS84, AOI_CITY, MML_KEY, MML_PARCELS
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
-PAGE_LIMIT = 1000
+PAGE_LIMIT = 10000
 MIN_AREA_HA = 10
+_PARALLEL = 4  # concurrent page requests
 
 COLLECTION = "PalstanSijaintitiedot"
 
@@ -45,14 +46,12 @@ def to_4326_json(geom_3067: dict) -> dict:
 
 
 def fetch_large_parcels(bbox_3067: str) -> list[dict]:
-    """Paginate MML parcels, keep only >= MIN_AREA_HA on-the-fly."""
-    all_large = []
-    seen_ids = set()
-    skipped_null = 0
-    skipped_small = 0
+    """Paginate MML parcels in parallel, keep only >= MIN_AREA_HA."""
+    all_large: list[dict] = []
+    seen_ids: set[str] = set()
     crs_param = "http://www.opengis.net/def/crs/EPSG/0/3067"
 
-    url = (
+    first_url = (
         f"{MML_PARCELS}/collections/{COLLECTION}/items"
         f"?bbox={bbox_3067}"
         f"&bbox-crs={crs_param}"
@@ -60,57 +59,60 @@ def fetch_large_parcels(bbox_3067: str) -> list[dict]:
         f"&limit={PAGE_LIMIT}"
     )
 
-    page = 0
-    while url:
-        page += 1
+    # Count total matching features via HEAD (OGC-NumberMatched header)
+    head_resp = requests.head(first_url, auth=(MML_KEY or "", ""), timeout=30)
+    total = int(head_resp.headers.get("OGC-NumberMatched", 0))
+    limit = int(head_resp.headers.get("OGC-NumberReturned", PAGE_LIMIT))
+    if limit > PAGE_LIMIT:
+        limit = PAGE_LIMIT
+    if total == 0:
+        print("  No parcels in AOI")
+        return []
+
+    pages = (total + limit - 1) // limit
+    print(f"  Total: {total:,} parcels, {pages} pages of {limit}")
+
+    # Build page URLs
+    urls = [first_url]
+    for _ in range(1, pages):
+        offset = f"&offset={_ * limit}"
+        urls.append(first_url + offset)
+
+    def fetch_and_process(url: str) -> int:
         resp = requests.get(url, auth=(MML_KEY or "", ""), timeout=120)
         if resp.status_code == 401:
-            print("  ERROR: MML API key rejected.")
-            sys.exit(1)
+            sys.exit("  ERROR: MML API key rejected.")
         if resp.status_code != 200:
-            print(f"  MML error {resp.status_code} on page {page}: {resp.text[:200]}")
-            break
-
-        data = resp.json()
-        features = data.get("features", [])
-        if not features:
-            break
-
+            return 0
+        feats = resp.json().get("features", [])
         kept = 0
-        for f in features:
+        for f in feats:
             g = f.get("geometry")
             if not g or g.get("type") not in ("Polygon", "MultiPolygon"):
-                skipped_null += 1
                 continue
             try:
                 s_3067 = shape(g)
-                ha = s_3067.area / 10000          # coords are in metres → sq m → ha
+                ha = s_3067.area / 10000
                 pid = f.get("properties", {}).get("kiinteistotunnus", "")
                 if ha >= MIN_AREA_HA and pid not in seen_ids:
                     seen_ids.add(pid)
-                    f["geometry"] = to_4326_json(g)   # reproject for GeoJSON
+                    f["geometry"] = to_4326_json(g)
                     f["properties"]["area_ha"] = round(ha, 1)
                     all_large.append(f)
                     kept += 1
-                else:
-                    skipped_small += 1
             except Exception:
                 pass
+        return kept
 
-        if kept == 0 and page >= 3:
-            print(f"  Page {page}: {len(features)} feats, 0 kept — stopping (no >=10 ha parcels in first 3 pages)")
-            break
+    with ThreadPoolExecutor(max_workers=_PARALLEL) as pool:
+        futs = {pool.submit(fetch_and_process, u): u for u in urls}
+        done = 0
+        for fut in as_completed(futs):
+            done += 1
+            if done % 20 == 0 or done == len(urls):
+                print(f"  {done}/{len(urls)} pages — {len(all_large)} kept")
 
-        print(f"  Page {page}: {len(features)} feats -> {kept} kept (total: {len(all_large)})")
-
-        url = None
-        for link in data.get("links", []):
-            if link.get("rel") == "next":
-                url = link["href"]
-                break
-        time.sleep(0.3)
-
-    print(f"  Skipped: {skipped_null} null-geom, {skipped_small} < {MIN_AREA_HA} ha")
+    print(f"  Total: {len(all_large)} parcels >= {MIN_AREA_HA} ha")
     return all_large
 
 
