@@ -169,7 +169,7 @@ def main():
     print(f"  Size:   {len(gdf)} features")
 
     if "companyname" in gdf.columns:
-        companies = gdf["companyname"].unique()
+        companies = gdf["companyname"].dropna().unique()
         print(f"  Operators: {len(companies)}")
         for c in sorted(companies):
             count = len(gdf[gdf["companyname"] == c])
