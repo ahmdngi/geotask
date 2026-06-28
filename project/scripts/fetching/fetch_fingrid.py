@@ -14,13 +14,14 @@ from typing import Any
 
 import geopandas as gpd
 import requests
+import sys
 
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from scripts.config import AOI_BBOX_WGS84, AOI_CITY
+from config.config import AOI_BBOX_WGS84, AOI_CITY
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "raw"
+DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
 LAYER_URL = (
     "https://services2.arcgis.com/uh3cDCipmuPcmxmx/ArcGIS/rest/services"
     "/Kytkinlaitokset_Fingrid/FeatureServer/0"

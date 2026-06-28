@@ -17,12 +17,12 @@ import pandas as pd
 import requests
 from shapely.geometry import shape
 import sys
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from scripts.config import AOI_BBOX_WGS84, AOI_CITY
+from config.config import AOI_BBOX_WGS84, AOI_CITY
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "raw"
+DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
 UA = "KRIOS-GIS/1.0 (assignment)"
 OSM_BBOX = ",".join(str(v) for v in AOI_BBOX_WGS84)  # min_lat,min_lon,max_lat,max_lon
 

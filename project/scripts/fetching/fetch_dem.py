@@ -17,12 +17,12 @@ from pathlib import Path
 
 import requests
 import sys
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from scripts.config import AOI_BBOX_WGS84, AOI_CITY, MML_KEY
+from config.config import AOI_BBOX_WGS84, AOI_CITY, MML_KEY
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "raw"
+DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
 TARGET_CRS = "EPSG:3067"
 MAX_AREA_KM2 = 90  # MML limit is 100 km², leave margin
 POLL_INTERVAL = 5  # seconds between job status polls

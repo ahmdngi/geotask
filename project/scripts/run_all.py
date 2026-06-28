@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_SCRIPTS_DIR = _PROJECT_ROOT / "scripts"
+_SCRIPTS_DIR = _PROJECT_ROOT / "scripts" / "fetching"
 
 ALL_SCRIPTS = [
     "fetch_fingrid.py",

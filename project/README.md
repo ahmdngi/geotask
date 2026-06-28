@@ -8,23 +8,25 @@ Geospatial site suitability analysis for data center siting in Finland.
 project/
 ├── config/
 │   ├── aoi.json              # AOI city + bbox (set via city picker or manually)
-│   └── keys.json             # API keys template (fill in before MML scripts)
+│   ├── keys.json             # API keys template (fill in before MML scripts)
+│   └── config.py             # Shared config loader (reads aoi.json + keys.json)
 ├── templates/
 │   └── city_picker.html      # Leaflet interactive city selector (12 Finnish cities)
 ├── data/
 │   └── raw/                  # All fetched layers land here
 ├── scripts/
-│   ├── config.py             # Shared config loader (reads aoi.json + keys.json)
-│   ├── city_picker.py        # Starts local HTTP server → Leaflet city picker
+│   ├── city_picker.py        # Starts local HTTP server → Leaflet city picker → auto-runs fetching
 │   ├── run_all.py            # Orchestrator — runs fetch scripts in order
-│   ├── fetch_fingrid.py      # Fingrid grid substation capacity
-│   ├── fetch_osm.py          # OSM power lines, substations, plants, data centers
-│   ├── fetch_urban_centers.py # Cities/towns with population >= 100k
-│   ├── fetch_natura2000.py   # Natura 2000 protected sites
-│   ├── fetch_flood_zones.py  # River + sea flood hazard zones (SYKE WFS)
-│   ├── fetch_nature_reserves.py # State/private nature reserves (SYKE WFS)
-│   ├── fetch_land_parcels.py # MML land parcels (kiinteistöt — needs API key)
-│   └── fetch_dem.py          # MML 2m digital elevation model (needs API key)
+│   └── fetching/
+│       ├── __init__.py
+│       ├── fetch_fingrid.py      # Fingrid grid substation capacity
+│       ├── fetch_osm.py          # OSM power lines, substations, plants, data centers
+│       ├── fetch_urban_centers.py # Cities/towns with population >= 100k
+│       ├── fetch_natura2000.py   # Natura 2000 protected sites
+│       ├── fetch_flood_zones.py  # River + sea flood hazard zones (SYKE WFS)
+│       ├── fetch_nature_reserves.py # State/private nature reserves (SYKE WFS)
+│       ├── fetch_land_parcels.py # MML land parcels (kiinteistöt — needs API key)
+│       └── fetch_dem.py          # MML 2m digital elevation model (needs API key)
 ├── notebooks/
 │   └── 01_exploration.ipynb  # Exploration notebook
 ├── outputs/                  # Final deliverables
@@ -47,15 +49,16 @@ echo '{"MML_KEY": "your-key-here"}' > config/keys.json
 Two ways:
 
 ```bash
-# Interactive Leaflet map — click a city, hit "Save & Close":
+# Interactive Leaflet map — click a city, hit "Save & Close",
+# all 8 fetch scripts run automatically:
 python scripts/city_picker.py
-# Opens http://127.0.0.1:8765 — 12 Finnish cities to choose from
+# Opens http://127.0.0.1:8765 — data fetching starts right after save
 
-# Or edit config/aoi.json directly:
+# Or edit config/aoi.json directly then run manually:
 # {"city": "Tampere", "bbox_wgs84": [60.9978, 23.2616, 61.9978, 24.2616]}
 ```
 
-### 3. Fetch data
+### 3. Fetch data (if not using city picker auto-run)
 
 ```bash
 # Fetch everything:

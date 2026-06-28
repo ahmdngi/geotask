@@ -2,20 +2,35 @@
 Interactive Leaflet city picker for KRIOS GIS.
 
 Starts a local HTTP server, opens the Leaflet city picker page,
-and saves the selected city + bbox to config/aoi.json.
+saves the selected city + bbox to config/aoi.json,
+then automatically runs all data-fetching scripts.
 """
 
 import json
 import os
+import subprocess
 import sys
 import webbrowser
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse
 
-_CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
-_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_CONFIG_DIR = _PROJECT_ROOT / "config"
+_TEMPLATE_DIR = _PROJECT_ROOT / "templates"
+_SCRIPTS_DIR = _PROJECT_ROOT / "scripts"
 _PORT = 8765
+
+ALL_FETCH_SCRIPTS = [
+    "fetching/fetch_fingrid.py",
+    "fetching/fetch_osm.py",
+    "fetching/fetch_urban_centers.py",
+    "fetching/fetch_natura2000.py",
+    "fetching/fetch_flood_zones.py",
+    "fetching/fetch_nature_reserves.py",
+    "fetching/fetch_land_parcels.py",
+    "fetching/fetch_dem.py",
+]
 
 
 class PickerHandler(SimpleHTTPRequestHandler):
@@ -52,6 +67,40 @@ class PickerHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "text/plain")
             self.end_headers()
             self.wfile.write(b"OK")
+
+            # Auto-run fetching after saving
+            print(f"\n{'═' * 50}")
+            print(f"  Starting data fetch for {city}...")
+            print(f"{'═' * 50}\n")
+
+            for script in ALL_FETCH_SCRIPTS:
+                script_path = _SCRIPTS_DIR / script
+                if not script_path.exists():
+                    print(f"  SKIP: {script} not found")
+                    continue
+
+                print(f"── {script} ──", flush=True)
+                result = subprocess.run(
+                    [sys.executable, str(script_path)],
+                    cwd=_PROJECT_ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                )
+
+                if result.returncode == 0:
+                    lines = [l for l in result.stdout.split("\n") if l.strip()]
+                    for line in lines[-3:]:
+                        print(f"  {line}")
+                else:
+                    print(f"  ❌ {result.stderr[:200]}")
+                print()
+
+            print(f"{'═' * 50}")
+            print(f"  ✅ All fetching complete for {city}")
+            print(f"  📁 Output: {_PROJECT_ROOT / 'data' / 'raw'}/")
+            print(f"{'═' * 50}")
+
         else:
             self.send_response(404)
             self.end_headers()
@@ -71,8 +120,8 @@ def main():
     print("─" * 50)
     print(f"\n  Open in your browser:")
     print(f"  └─ {url}")
-    print(f"\n  Click a city marker → confirm with 'Save & Close'")
-    print(f"  Then run: python scripts/run_all.py\n")
+    print(f"\n  Click a city marker → 'Save & Close'")
+    print(f"  → all 8 fetch scripts run automatically\n")
     print("  Press Ctrl+C to stop.\n")
 
     webbrowser.open(url)
