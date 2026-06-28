@@ -13,6 +13,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Allow loading complex/large GeoJSON features (nature reserves, etc.)
+os.environ.setdefault("OGR_GEOJSON_MAX_OBJ_SIZE", "0")
+
 # Make project root importable when running scripts directly
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
