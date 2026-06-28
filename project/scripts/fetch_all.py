@@ -25,8 +25,10 @@ def run(name: str) -> dict:
     if not sp.exists():
         return {"name": name, "status": "SKIP"}
     t0 = time.time()
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    print(f"\n{'─'*50}\n  [{name}]\n{'─'*50}")
     try:
-        r = subprocess.run([sys.executable, str(sp)], timeout=1800)
+        r = subprocess.run([sys.executable, str(sp)], timeout=1800, env=env)
         elapsed = time.time() - t0
         if r.returncode == 0:
             return {"name": name, "status": "OK", "time": elapsed}
