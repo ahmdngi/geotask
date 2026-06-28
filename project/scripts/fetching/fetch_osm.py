@@ -16,7 +16,7 @@ import geopandas as gpd
 import pandas as pd
 import requests
 from shapely.geometry import shape
-import sys
+
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -32,7 +32,7 @@ LAYERS = {
     "power_lines": {"power": "line"},
     "substations": {"power": "substation"},
     "power_plants": {"power": ["plant", "generator"]},
-    "data_centers": {"building": "datacenter"},
+    "data_centers": {"building": "datacenter", "man_made": "data_center", "office": "it"},
 }
 
 
@@ -84,7 +84,11 @@ def classify_element(el: dict) -> list[str]:
         labels.append("substations")
     if power in ("plant", "generator"):
         labels.append("power_plants")
-    if tags.get("building") == "datacenter":
+    if (
+        tags.get("building") == "datacenter"
+        or tags.get("man_made") == "data_center"
+        or tags.get("office") == "it"
+    ):
         labels.append("data_centers")
     return labels
 
@@ -124,6 +128,12 @@ def main():
         '  node["building"="datacenter"];'
         '  way["building"="datacenter"];'
         '  relation["building"="datacenter"];'
+        '  node["man_made"="data_center"];'
+        '  way["man_made"="data_center"];'
+        '  relation["man_made"="data_center"];'
+        '  node["office"="it"];'
+        '  way["office"="it"];'
+        '  relation["office"="it"];'
         ');'
         'out geom;'
     )
