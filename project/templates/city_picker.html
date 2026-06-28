@@ -128,15 +128,7 @@ CITIES.forEach(addCity);
 // Confirm → POST to server
 document.getElementById('confirmBtn').addEventListener('click', async () => {
   if (!selected) return;
-  const degPerKm = 1 / 111;
-  const r = selected.buffer * degPerKm;
-  const bbox = [
-    +(selected.lat - r).toFixed(4),
-    +(selected.lng - r).toFixed(4),
-    +(selected.lat + r).toFixed(4),
-    +(selected.lng + r).toFixed(4),
-  ];
-  const payload = { city: selected.name, bbox_wgs84: bbox };
+  const payload = { city: selected.name, center_wgs84: [selected.lat, selected.lng], buffer_km: selected.buffer };
 
   try {
     const resp = await fetch('/save', {

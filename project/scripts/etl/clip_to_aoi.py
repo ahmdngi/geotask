@@ -15,11 +15,12 @@ import geopandas as gpd
 import rasterio
 from rasterio.mask import mask as rio_mask
 from shapely.geometry import box, mapping
+from shapely.ops import transform
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent.parent
 sys.path.insert(0, str(ROOT))
-from config.config import AOI_BBOX_WGS84, AOI_CITY
+from config.config import AOI_CITY, AOI_BUFFER_POLY
 
 RAW_DIR = ROOT / "data" / "raw"
 ETL_DIR = ROOT / "data" / "etl"
@@ -89,12 +90,11 @@ def clip_raster(tif_path: Path, boundary: gpd.GeoDataFrame, out_path: Path):
 def main():
     CLIP_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Build AOI bbox in EPSG:3067
+    # Build AOI circular buffer in EPSG:3067
     from pyproj import Transformer
     transformer = Transformer.from_crs("EPSG:4326", TARGET_CRS, always_xy=True)
-    minx, miny = transformer.transform(AOI_BBOX_WGS84[1], AOI_BBOX_WGS84[0])
-    maxx, maxy = transformer.transform(AOI_BBOX_WGS84[3], AOI_BBOX_WGS84[2])
-    aoi_poly = box(minx, miny, maxx, maxy)
+    aoi_buffer_3067 = transform(transformer.transform, AOI_BUFFER_POLY)
+    aoi_mask = gpd.GeoDataFrame(geometry=[aoi_buffer_3067], crs=TARGET_CRS)
 
     # Load Finland boundary mask
     boundary = load_finland_boundary()
@@ -119,7 +119,21 @@ def main():
                 continue
             print(f"  {fpath.name}...", end=" ", flush=True)
             try:
-                clip_raster(fpath, boundary, out_path)
+                # Clip raster to buffer ∩ boundary
+                from shapely.geometry import mapping as rio_mapping
+                intersect = gpd.overlay(aoi_mask, boundary, how="intersection")
+                clip_geom = [rio_mapping(intersect.geometry.union_all())]
+                with rasterio.open(fpath) as src:
+                    out_image, out_transform = rio_mask(src, clip_geom, crop=True, filled=False)
+                    out_meta = src.meta.copy()
+                    out_meta.update({
+                        "driver": "GTiff",
+                        "height": out_image.shape[1],
+                        "width": out_image.shape[2],
+                        "transform": out_transform,
+                    })
+                    with rasterio.open(out_path, "w", **out_meta) as dst:
+                        dst.write(out_image)
                 print("clipped")
             except Exception as e:
                 print(f"ERROR: {e}")
@@ -138,7 +152,7 @@ def main():
                     gdf = gdf.to_crs(TARGET_CRS)
 
                 # Clip to AOI bbox first
-                gdf = gdf.clip(aoi_poly)
+                gdf = clip_vector(gdf, aoi_mask)
 
                 # Then clip to Finland boundary if available
                 if boundary is not None and not gdf.empty:

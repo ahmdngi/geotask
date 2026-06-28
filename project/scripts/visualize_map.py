@@ -2,6 +2,7 @@
 Visualize all ETL layers using GeoLibre interactive map.
 
 Matches the symbology from the exploration notebook (Chunk 4).
+Includes the AOI circular buffer as the base layer.
 
 Usage:
   python scripts/visualize_map.py                    # opens in browser
@@ -16,7 +17,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(ROOT))
-from config.config import AOI_BBOX_WGS84, AOI_CITY
+from config.config import AOI_CENTER_WGS84, AOI_BUFFER_KM, AOI_CITY
 from geolibre import Map
 
 CLIP_DIR = ROOT / "data" / "etl" / "clipped"
@@ -25,8 +26,8 @@ SUIT_DIR = ROOT / "data" / "etl" / "suitability"
 OUT_DIR = ROOT / "data" / "etl"
 
 # AOI center point (lon, lat — GeoLibre order)
-CENTER_LON = (AOI_BBOX_WGS84[1] + AOI_BBOX_WGS84[3]) / 2
-CENTER_LAT = (AOI_BBOX_WGS84[0] + AOI_BBOX_WGS84[2]) / 2
+CENTER_LON = AOI_CENTER_WGS84[1]
+CENTER_LAT = AOI_CENTER_WGS84[0]
 
 
 def load_geojson(path: Path, label: str = "") -> dict:
@@ -48,7 +49,7 @@ def load_geojson(path: Path, label: str = "") -> dict:
 
 def main():
     print(f"Building GeoLibre map — {AOI_CITY}")
-    print(f"  Center: {CENTER_LAT:.4f}, {CENTER_LON:.4f}")
+    print(f"  Center: {CENTER_LAT:.4f}, {CENTER_LON:.4f}  •  Buffer: {AOI_BUFFER_KM}km")
     print()
 
     # ── Load all layers ──
@@ -88,6 +89,10 @@ def main():
         EXCL_DIR / f"{AOI_CITY}_FINLAND_exclusion_zones.geojson",
         "Exclusion zones",
     )
+    buffer_layer = load_geojson(
+        OUT_DIR / f"{AOI_CITY}_FINLAND_buffer.geojson",
+        "AOI buffer",
+    )
 
     # ── Build map ──
     m = Map(
@@ -98,7 +103,20 @@ def main():
         height="700px",
     )
 
-    # 1. Fingrid substations — choropleth on consumption capacity (notebook match)
+    # 0. AOI circular buffer — base layer, blue dashed outline, very transparent
+    if buffer_layer["features"]:
+        m.add_geojson(
+            buffer_layer,
+            name=f"AOI buffer ({AOI_BUFFER_KM}km)",
+            strokeColor="#3498db",
+            strokeWidth=2,
+            strokeDash="5,5",
+            fillColor="#3498db",
+            fillOpacity=0.03,
+            popup=["city", "buffer_km"],
+        )
+
+    # 1. Fingrid substations — choropleth on consumption capacity
     m.add_choropleth(
         fingrid,
         column="Kulutus_25",

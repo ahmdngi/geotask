@@ -55,14 +55,16 @@ class PickerHandler(SimpleHTTPRequestHandler):
             data = json.loads(body)
 
             city = data.get("city", "Unknown")
-            bbox = data.get("bbox_wgs84", [])
+            center = data.get("center_wgs84", data.get("bbox_wgs84", []))
+            buffer_km = data.get("buffer_km", 100)
 
-            aoi = {"city": city, "bbox_wgs84": bbox}
-            _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-            with open(_CONFIG_DIR / "aoi.json", "w") as f:
-                json.dump(aoi, f, indent=2)
+            if len(center) == 4:  # legacy bbox format — estimate center
+                lat_center = (center[0] + center[2]) / 2
+                lon_center = (center[1] + center[3]) / 2
+                center = [lat_center, lon_center]
 
-            print(f"\n✅ AOI saved: {city} — bbox {bbox}")
+            from config.config import set_aoi
+            set_aoi(city, center, buffer_km)
             self.send_response(200)
             self.send_header("Content-Type", "text/plain")
             self.end_headers()
