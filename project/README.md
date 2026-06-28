@@ -104,5 +104,12 @@ All outputs in EPSG:4326 (GeoJSON) / EPSG:3067 (TIFF).
 ## Dependencies
 
 ```
-geopandas pyproj shapely requests rasterio scipy matplotlib
+geopandas pyproj shapely requests rasterio scipy numpy geolibre playwright
+```
+
+Install:
+
+```bash
+pip install geopandas pyproj shapely requests rasterio scipy numpy geolibre
+playwright install chromium
 ```
