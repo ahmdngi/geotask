@@ -1,17 +1,18 @@
-"""
-Compute slope gradient from DEM, reclassify <8% suitable areas.
-Outputs: TIFF rasters + vectorized GeoJSON of suitable areas.
+"""Compute slope gradient from DEM, reclassify <8% suitable areas.
+Outputs:
+  - slope_percent.tiff          (float32)
+  - gradient_suitable_8pct.tiff (uint8 binary mask: 1 = suitable)
+  - gradient_coverage.geojson   (simplified outline polygon for viz)
 """
 
 import sys
 from pathlib import Path
 
-import geopandas as gpd
 import numpy as np
 import rasterio
 from rasterio import features as rio_features
 from scipy.ndimage import sobel
-from shapely.geometry import shape
+from shapely.geometry import shape, mapping
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent.parent
@@ -27,7 +28,6 @@ TARGET_CRS = "EPSG:3067"
 def main():
     SUIT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Find DEM file
     dem_path = next((f for f in sorted(CLIP_DIR.iterdir()) if "dem" in f.name and f.suffix == ".tiff"), None)
     if dem_path is None:
         print("No DEM file found in clipped data.")
@@ -35,8 +35,8 @@ def main():
 
     prefix = f"{AOI_CITY}_FINLAND"
     slope_tif = SUIT_DIR / f"{prefix}_slope_percent.tiff"
-    suitable_tif = SUIT_DIR / f"{prefix}_gradient_suitable_8pct.tiff"
-    out_vector = SUIT_DIR / f"{prefix}_gradient_lt8.geojson"
+    mask_tif = SUIT_DIR / f"{prefix}_gradient_suitable_8pct.tiff"
+    out_viz = SUIT_DIR / f"{prefix}_gradient_coverage.geojson"
 
     print(f"DEM: {dem_path.name}")
 
@@ -57,50 +57,56 @@ def main():
                        height=slope_pct.shape[0], width=slope_pct.shape[1],
                        count=1, dtype=np.float32, crs=crs, transform=transform) as dst:
         dst.write(slope_pct.astype(np.float32), 1)
-    print(f"  Slope: {slope_tif.name}")
+    print(f"  Slope:     {slope_tif.name}")
 
-    # Reclassify <8%
+    # Binary mask: 1 = slope < 8%
     suitable = (slope_pct < 8.0).astype(np.uint8)
-    with rasterio.open(suitable_tif, "w", driver="GTiff",
+    with rasterio.open(mask_tif, "w", driver="GTiff",
                        height=suitable.shape[0], width=suitable.shape[1],
                        count=1, dtype=np.uint8, crs=crs, transform=transform, nodata=0) as dst:
         dst.write(suitable, 1)
-    print(f"  Suitable mask: {suitable_tif.name}")
-
-    # Vectorize
-    results = rio_features.shapes(suitable, transform=transform, mask=suitable == 1)
-    features = []
-    for geom_val, val in results:
-        if val != 1:
-            continue
-        features.append({"type": "Feature", "geometry": shape(geom_val),
-                         "properties": {"suitable": "yes", "gradient_pct": "<8"}})
-
-    if not features:
-        print("  No areas <8% slope found")
-        return
-
-    gdf = gpd.GeoDataFrame.from_features({"type": "FeatureCollection", "features": features}, crs=TARGET_CRS)
-    gdf = gdf[gdf.geometry.is_valid & ~gdf.geometry.is_empty]
-    if gdf.empty:
-        print("  No valid geometries")
-        return
-    gdf.geometry = gdf.geometry.simplify(10.0)
-
-    before = len(gdf)
-    gdf = gdf[gdf.geometry.area >= 100]
-    gdf = gdf[gdf.geometry.is_valid & ~gdf.geometry.is_empty]
-    if len(gdf) != before:
-        print(f"  Removed {before - len(gdf)} tiny polygons")
-
-    area_km2 = gdf.geometry.area.sum() / 1e6
-    gdf = gdf.to_crs("EPSG:4326")
-    gdf.to_file(out_vector, driver="GeoJSON", encoding="utf-8")
+    print(f"  Mask:      {mask_tif.name}")
 
     total_px = suitable.size
-    pct = suitable.sum() / total_px * 100
-    print(f"  Suitable: {area_km2:.1f} km² ({pct:.1f}% of DEM)")
-    print(f"  Vector:   {out_vector.name}")
+    suitable_px = suitable.sum()
+    pct = suitable_px / total_px * 100
+    area_km2 = suitable_px * (abs(transform[0]) * abs(transform[4])) / 1e6
+    print(f"  Suitable:  {area_km2:.1f} km² ({pct:.1f}% of DEM)")
+
+    # Simplified coverage polygon for visualization
+    results = list(rio_features.shapes(suitable, transform=transform, mask=suitable == 1))
+    geoms = [shape(g) for g, v in results if v == 1]
+    if not geoms:
+        print("  No suitable areas found.")
+        return
+
+    from shapely.ops import unary_union
+    merged = unary_union(geoms)
+
+    # Simplify heavily — 50m tolerance in 3067
+    simplified = merged.simplify(50.0, preserve_topology=True)
+    # Drop tiny islands
+    if simplified.geom_type == "MultiPolygon":
+        parts = [p for p in simplified.geoms if p.area >= 50000]  # 5 ha min
+        simplified = unary_union(parts) if parts else merged
+
+    viz_fc = {
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "geometry": mapping(simplified),
+            "properties": {
+                "suitable": "yes",
+                "gradient_pct": "<8",
+                "area_km2": round(area_km2, 1),
+                "coverage_pct": round(pct, 1),
+            },
+        }]
+    }
+
+    import json
+    out_viz.write_text(json.dumps(viz_fc, ensure_ascii=False), encoding="utf-8")
+    print(f"  Coverage:  {out_viz.name}")
 
 
 if __name__ == "__main__":

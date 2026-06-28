@@ -44,7 +44,7 @@ def main():
     parcels = load(CLIP_DIR / f"{prefix}_mml_land_parcels.geojson", "Land parcels")
     urban = load(CLIP_DIR / f"{prefix}_urban_centers.geojson", "Urban centers")
     natura = load(CLIP_DIR / f"{prefix}_natura2000.geojson", "Natura2000")
-    gradient = load(SUIT_DIR / f"{prefix}_gradient_lt8.geojson", "Gradient")
+    gradient = load(SUIT_DIR / f"{prefix}_gradient_coverage.geojson", "Gradient <8%")
     exclusion = load(EXCL_DIR / f"{prefix}_exclusion_zones.geojson", "Exclusions")
     buffer = load(OUT_DIR / f"{prefix}_buffer.geojson", "Buffer")
 
@@ -85,8 +85,10 @@ def main():
                       fillColor="#27ae60", fillOpacity=0.15, strokeWidth=1,
                       popup=["SITENAME", "SITETYPE", "SITECODE"])
     if gradient["features"]:
-        m.add_geojson(gradient, name="Gradient <8%", strokeColor="#2ecc71",
-                      fillColor="#2ecc71", fillOpacity=0.1, strokeWidth=0.5)
+        m.add_geojson(gradient, name=f"Gradient <8% ({gradient['features'][0]['properties'].get('area_km2', '?')} km²)",
+                      strokeColor="#2ecc71", strokeWidth=2,
+                      fillColor="#2ecc71", fillOpacity=0.08,
+                      popup=["area_km2", "coverage_pct"])
     if exclusion["features"]:
         m.add_geojson(exclusion, name="Exclusion zones", strokeColor="#e74c3c",
                       fillColor="#e74c3c", fillOpacity=0.08, strokeWidth=1,
