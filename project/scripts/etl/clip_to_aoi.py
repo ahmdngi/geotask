@@ -37,6 +37,29 @@ def load_finland_boundary() -> gpd.GeoDataFrame | None:
     return None
 
 
+def clean_geometries(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Drop null geometries and fix invalid self-intersections."""
+    before = len(gdf)
+
+    # Drop null geometries
+    gdf = gdf[gdf.geometry.notna()]
+
+    # Fix invalid geometries with zero-width buffer
+    invalid = ~gdf.geometry.is_valid
+    if invalid.any():
+        gdf.loc[invalid, "geometry"] = gdf.loc[invalid, "geometry"].buffer(0)
+        # Drop any that are still invalid after fix
+        still_invalid = ~gdf.geometry.is_valid
+        if still_invalid.any():
+            print(f"      (dropped {still_invalid.sum()} unfixable geometries)", end=" ")
+            gdf = gdf[gdf.geometry.is_valid]
+
+    after = len(gdf)
+    if before != after:
+        print(f"(cleaned: {before - after} removed)", end=" ")
+    return gdf
+
+
 def clip_vector(gdf: gpd.GeoDataFrame, boundary: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Clip a vector layer to the Finland boundary."""
     if gdf.crs is None:
@@ -120,6 +143,9 @@ def main():
                 # Then clip to Finland boundary if available
                 if boundary is not None and not gdf.empty:
                     gdf = clip_vector(gdf, boundary)
+
+                # Clean geometries before saving
+                gdf = clean_geometries(gdf)
 
                 gdf.to_file(out_path, driver="GeoJSON", encoding="utf-8")
                 print(f"{len(gdf)} features")
