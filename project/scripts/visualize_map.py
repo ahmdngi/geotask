@@ -41,6 +41,7 @@ def main():
     substations = load(CLIP_DIR / f"{prefix}_osm_substations.geojson", "Substations")
     power_plants = load(CLIP_DIR / f"{prefix}_osm_power_plants.geojson", "Power plants")
     datacenters = load(CLIP_DIR / f"{prefix}_datacentermap.geojson", "Data centers")
+    parcels = load(CLIP_DIR / f"{prefix}_mml_land_parcels.geojson", "Land parcels")
     urban = load(CLIP_DIR / f"{prefix}_urban_centers.geojson", "Urban centers")
     natura = load(CLIP_DIR / f"{prefix}_natura2000.geojson", "Natura2000")
     gradient = load(SUIT_DIR / f"{prefix}_gradient_lt8.geojson", "Gradient")
@@ -53,6 +54,12 @@ def main():
         m.add_geojson(buffer, name=f"Buffer ({AOI_BUFFER_KM}km)",
                       strokeColor="#3498db", strokeWidth=2, strokeDash="5,5",
                       fillColor="#3498db", fillOpacity=0.03, popup=["city", "buffer_km"])
+
+    if parcels["features"]:
+        m.add_geojson(parcels, name="Land parcels",
+                      strokeColor="#8e44ad", strokeWidth=1,
+                      fillColor="#8e44ad", fillOpacity=0.05,
+                      popup=["kiinteistotunnus", "area_ha"])
 
     m.add_choropleth(fingrid, column="Kulutus_25", name="Substations (consumption MW)",
                      class_count=5, colormap="YlOrRd", scheme="quantile",

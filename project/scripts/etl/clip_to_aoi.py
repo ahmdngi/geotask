@@ -98,7 +98,7 @@ def main():
 
                 gdf = clean(gdf)
                 if gdf.geometry.geom_type.isin(["Polygon", "MultiPolygon"]).any():
-                    gdf.geometry = gdf.geometry.simplify(5.0)
+                    gdf.geometry = gdf.geometry.simplify(2.0)
                 gdf = gdf.to_crs("EPSG:4326")
                 gdf.to_file(out, driver="GeoJSON", encoding="utf-8")
                 print(f"{len(gdf)} features")
