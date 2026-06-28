@@ -80,12 +80,14 @@ class PickerHandler(SimpleHTTPRequestHandler):
                     continue
 
                 print(f"── {script} ──", flush=True)
+                env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
                 result = subprocess.run(
                     [sys.executable, str(script_path)],
                     cwd=_PROJECT_ROOT,
                     capture_output=True,
                     text=True,
                     encoding="utf-8",
+                    env=env,
                     timeout=600,
                 )
 

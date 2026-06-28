@@ -104,7 +104,7 @@ def save_geojson(features: list[dict], label: str):
     gdf.to_file(out_path, driver="GeoJSON", encoding="utf-8")
 
     types = gdf.geometry.geom_type.value_counts().to_dict()
-    print(f"  {label}: {len(gdf)} features ({dict(types)}), saved → {out_path.name}")
+    print(f"  {label}: {len(gdf)} features ({dict(types)}), saved -> {out_path.name}")
 
 
 def main():

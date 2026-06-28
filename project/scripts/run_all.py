@@ -14,6 +14,7 @@ Config:
 """
 
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -41,11 +42,14 @@ def run_script(name: str) -> dict:
         return {"script": name, "status": "SKIP", "error": "not found", "seconds": 0}
 
     t0 = time.time()
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     result = subprocess.run(
         [sys.executable, str(script_path)],
         cwd=_PROJECT_ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        env=env,
         timeout=600,
     )
     elapsed = time.time() - t0
