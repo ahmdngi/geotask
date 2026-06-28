@@ -85,9 +85,13 @@ def main():
 
     print(f"Processing {len(tif_paths)} DEM tiles ({WORKERS} workers)...")
 
-    # Phase 1: per-tile gradient → mask → polygonize → dissolve (parallel)
+    # Phase 1: per-tile gradient → mask → polygonize → dissolve, incremental merge
     t0 = time.time()
-    tile_features: list[dict] = []
+    from shapely.geometry import shape, mapping
+    from shapely.ops import unary_union, transform as shp_transform
+    import pyproj
+    merged = None
+    feature_geoms = []
     done = 0
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         fut_map = {pool.submit(process_tile, p): p for p in tif_paths}
@@ -96,25 +100,26 @@ def main():
             feat = fut.result()
             tile = fut_map[fut].stem
             if feat:
-                tile_features.append(feat)
+                g = shape(feat["geometry"])
+                feature_geoms.append(g)
+                # Incremental merge every 10 tiles to keep the union small
+                if len(feature_geoms) >= 10:
+                    merged = unary_union([merged] + feature_geoms) if merged else unary_union(feature_geoms)
+                    feature_geoms = []
             print(f"  [{done}/{len(tif_paths)}] {tile}: {'✅' if feat else '⏭️'}")
 
-    t1 = time.time()
-    print(f"  Polygonized: {len(tile_features)} tiles with suitable area ({t1-t0:.0f}s)")
+    # Final merge of remaining features
+    if feature_geoms:
+        merged = unary_union([merged] + feature_geoms) if merged else unary_union(feature_geoms)
 
-    if not tile_features:
-        print("No suitable areas found in any tile.")
+    t1 = time.time()
+    print(f"  Processing done: {t1-t0:.0f}s")
+
+    if merged is None:
+        print("No suitable areas found.")
         sys.exit(0)
 
-    # Phase 2: merge + dissolve all tile features
-    print(f"\nMerging {len(tile_features)} tile polygons...")
-    from shapely.geometry import shape, mapping
-    from shapely.ops import unary_union, transform as shp_transform
-    import pyproj
-    t2 = time.time()
-
-    merged = unary_union([shape(f["geometry"]) for f in tile_features])
-    # Dissolve (unary_union already merges overlapping/adjacent), then simplify
+    # Simplify + reproject
     dissolved = merged.simplify(SIMPLIFY_TOL * 2)
 
     # Reproject from EPSG:3067 → EPSG:4326
@@ -126,7 +131,7 @@ def main():
         "features": [{"type": "Feature", "geometry": mapping(dissolved_wgs84), "properties": {}}],
     }
     t3 = time.time()
-    print(f"  Merged into 1 multipolygon ({t3-t2:.1f}s)")
+    print(f"  Merged into 1 multipolygon ({(time.time()-t1):.1f}s)")
 
     # Save
     out_path = SUIT_DIR / f"{AOI_CITY}_FINLAND_gradient_suitable_8pct.geojson"
