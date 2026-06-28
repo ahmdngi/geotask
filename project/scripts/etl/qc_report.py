@@ -123,7 +123,7 @@ def main():
         report_lines.append(f"{'─' * 70}")
 
         for fpath in files:
-            if fpath.suffix not in (".geojson", ".tiff"):
+            if fpath.suffix != ".geojson":
                 continue
             report_lines.append(f"\n📄 {fpath.name}")
             try:
