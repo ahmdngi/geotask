@@ -19,7 +19,7 @@ from config.config import AOI_BBOX_WGS84, AOI_BUFFER_POLY, AOI_CITY, MML_KEY, MM
 
 TILE_SIZE_M = 10000      # 10 km × 10 km tiles (~100 km² each) — MML rejects larger
 TILES_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw" / "dem_tiles"
-WORKERS = 4
+WORKERS = 10
 POLL_INTERVAL = 5
 POLL_MAX = 60
 PROCESS_ID = "korkeusmalli_2m_bbox"
