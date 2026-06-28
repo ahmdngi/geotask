@@ -1,13 +1,11 @@
 """
-Fetch land parcels (kiinteistöt) from MML OGC API Features.
+Fetch land parcels (kiinteistöt) from MML OGC API Features — fast, filtered on-the-fly.
 
 Source: MML OGC API Features (requires MML_KEY in config/keys.json)
 Native CRS: WGS84 by default, request EPSG:3067 for metric geometry
 Output: data/raw/{CITY}_FINLAND_mml_land_parcels.geojson (EPSG:3067)
 
-Note: MML parcels at 100km radius can be huge. Script fetches all
-      parcels intersecting the AOI, then filters to >= 10 ha.
-      Set MML_KEY in config/keys.json before running.
+Filters to >= 10 ha during pagination (no GeoPandas, no full-load).
 """
 
 import json
@@ -16,15 +14,15 @@ import sys
 import time
 from pathlib import Path
 
-import geopandas as gpd
 import requests
+from shapely.geometry import shape
+
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 from config.config import AOI_BBOX_WGS84, AOI_CITY, MML_KEY
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
-TARGET_CRS = "EPSG:3067"
 PAGE_LIMIT = 1000
 
 BASE_URL = "https://avoin-paikkatieto.maanmittauslaitos.fi/kiinteisto-avoin/simple-features/v3"
@@ -40,9 +38,10 @@ def wgs84_to_3067_bbox_str(wgs84_bbox: list[float]) -> str:
     return f"{minx:.1f},{miny:.1f},{maxx:.1f},{maxy:.1f}"
 
 
-def fetch_all_parcels(bbox_3067: str) -> list[dict]:
-    """Fetch all parcel features from MML with pagination via next-link."""
-    all_features = []
+def fetch_large_parcels(bbox_3067: str) -> list[dict]:
+    """Paginate MML parcels, keep only >= 10 ha on-the-fly."""
+    all_large = []
+    seen_ids = set()
     crs_param = "http://www.opengis.net/def/crs/EPSG/0/3067"
 
     url = (
@@ -56,7 +55,7 @@ def fetch_all_parcels(bbox_3067: str) -> list[dict]:
     page = 0
     while url:
         page += 1
-        resp = requests.get(url, auth=(MML_KEY or "", ""), timeout=120)  # MML_KEY checked above
+        resp = requests.get(url, auth=(MML_KEY or "", ""), timeout=120)
         if resp.status_code == 401:
             print("  ERROR: MML API key rejected. Set MML_KEY env var.")
             sys.exit(1)
@@ -69,8 +68,24 @@ def fetch_all_parcels(bbox_3067: str) -> list[dict]:
         if not features:
             break
 
-        all_features.extend(features)
-        print(f"  Page {page}: {len(features)} features (total: {len(all_features)})")
+        kept = 0
+        for f in features:
+            g = f.get("geometry")
+            if not g or g.get("type") not in ("Polygon", "MultiPolygon"):
+                continue
+            try:
+                s = shape(g)
+                ha = s.area / 10000
+                pid = f.get("properties", {}).get("kiinteistotunnus", "")
+                if ha >= 10 and pid not in seen_ids:
+                    seen_ids.add(pid)
+                    f["properties"]["area_ha"] = round(ha, 1)
+                    all_large.append(f)
+                    kept += 1
+            except Exception:
+                pass
+
+        print(f"  Page {page}: {len(features)} features -> {kept} kept (total: {len(all_large)})")
 
         # Follow next link
         url = None
@@ -80,7 +95,7 @@ def fetch_all_parcels(bbox_3067: str) -> list[dict]:
                 break
         time.sleep(0.3)
 
-    return all_features
+    return all_large
 
 
 def main():
@@ -96,37 +111,27 @@ def main():
         sys.exit(1)
 
     bbox_3067 = wgs84_to_3067_bbox_str(AOI_BBOX_WGS84)
-    area_km2 = (
-        float(bbox_3067.split(",")[2]) - float(bbox_3067.split(",")[0])
-    ) * (
-        float(bbox_3067.split(",")[3]) - float(bbox_3067.split(",")[1])
-    ) / 1e6
+    parts = [float(v) for v in bbox_3067.split(",")]
+    area_km2 = (parts[2] - parts[0]) * (parts[3] - parts[1]) / 1e6
 
     print(f"Fetching land parcels for AOI (~{area_km2:.0f} km²)...")
-    print(f"  This may take a while — parcels at this scale are large.")
 
-    features = fetch_all_parcels(bbox_3067)
+    large_parcels = fetch_large_parcels(bbox_3067)
 
-    if not features:
-        print("  No parcels found.")
+    if not large_parcels:
+        print("  No parcels >= 10 ha found.")
         sys.exit(0)
 
-    fc = {"type": "FeatureCollection", "features": features}
-    gdf = gpd.GeoDataFrame.from_features(fc, crs="EPSG:3067")
-
-    # Filter parcels >= 10 ha (100,000 m² in EPSG:3067 = metric)
-    gdf["area_ha"] = gdf.geometry.area / 10000
-    total = len(gdf)
-    gdf = gdf[gdf["area_ha"] >= 10].copy()
-
+    fc = {"type": "FeatureCollection", "features": large_parcels}
     out_path = DATA_DIR / f"{AOI_CITY}_FINLAND_mml_land_parcels.geojson"
-    gdf.to_file(out_path, driver="GeoJSON", encoding="utf-8")
+    out_path.write_text(json.dumps(fc, ensure_ascii=False), encoding="utf-8")
 
-    print(f"\n  Total parcels fetched: {total}")
-    print(f"  Parcels >= 10 ha:     {len(gdf)}")
-    print(f"  Largest:              {gdf['area_ha'].max():.0f} ha" if len(gdf) else "  Largest:              N/A")
-    print(f"  CRS:                  EPSG:3067 (native via explicit request)")
-    print(f"  Saved:                {out_path.name}")
+    areas = [f["properties"]["area_ha"] for f in large_parcels]
+
+    print(f"\n  Parcels >= 10 ha:  {len(large_parcels)}")
+    print(f"  Largest:           {max(areas):.0f} ha")
+    print(f"  CRS:               EPSG:3067 (native)")
+    print(f"  Saved:             {out_path.name}")
 
 
 if __name__ == "__main__":
