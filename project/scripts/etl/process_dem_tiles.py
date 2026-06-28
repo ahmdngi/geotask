@@ -1,5 +1,5 @@
-"""Process DEM tiles in parallel: per-tile gradient → binary mask → polygonize → merge/dissolve.
-No full-resolution mask mosaic — goes directly to dissolved GeoJSON.
+"""Process DEM tiles in parallel: gradient → binary mask → polygonize → GeoJSON.
+Reads tiles at 1/8 resolution (fast I/O), generates dissolved suitability GeoJSON.
 
 Input:  data/raw/dem_tiles/*.tiff (raw 2m DEM tiles from MML)
 Output: data/etl/suitability/{City}_FINLAND_gradient_suitable_8pct.geojson
@@ -23,25 +23,22 @@ from config.config import AOI_CITY
 TILES_DIR = ROOT / "data" / "raw" / "dem_tiles"
 SUIT_DIR = ROOT / "data" / "etl" / "suitability"
 WORKERS = 10
-SIMPLIFY_TOL = 5  # meters in EPSG:3067
+SIMPLIFY_TOL = 5
 
 
-def process_tile(tif_path: Path) -> dict | None:
-    """Read one DEM tile → gradient → binary mask → polygonize → dissolve → return single GeoJSON feature or None."""
+def process_tile(tif_path: Path) -> tuple | None:
+    """Read tile at 1/8 res → gradient → mask. Returns (mask_array, transform, crs, polys) or None."""
     label = tif_path.stem
     try:
         with rasterio.open(tif_path) as src:
-            full_dem = src.read(1).astype(np.float64)
-            transform = src.transform
-            full_h, full_w = full_dem.shape
+            scale = 8
+            h_lo = src.height // scale
+            w_lo = src.width // scale
+            dem = src.read(1, out_shape=(1, h_lo, w_lo)).astype(np.float64)
+            xf_lo = src.transform * src.transform.scale(src.width / w_lo, src.height / h_lo)
+            crs = src.crs
 
-        # Downsample 8× for fast polygonization
-        from scipy.ndimage import zoom
-        scale = 1/8
-        dem = zoom(full_dem, scale)
-        # Adjust transform for downsampled raster
-        transform_lo = transform * transform.scale(full_w / dem.shape[1], full_h / dem.shape[0])
-
+        # Gradient
         dx = sobel(dem, axis=1) / 30.0
         dy = sobel(dem, axis=0) / 30.0
         slope_deg = np.arctan(np.sqrt(dx**2 + dy**2)) * (180 / np.pi)
@@ -52,18 +49,16 @@ def process_tile(tif_path: Path) -> dict | None:
         if mask.sum() == 0:
             return None
 
+        # Polygonize for GeoJSON
         from shapely.geometry import shape, mapping
         from shapely.ops import unary_union
         polys = []
-        for geom, val in shapes(mask, mask=mask, transform=transform_lo):
+        for geom, val in shapes(mask, mask=mask, transform=xf_lo):
             if val == 1:
                 polys.append(shape(geom).simplify(SIMPLIFY_TOL))
-        if not polys:
-            return None
+        dissolved = unary_union(polys) if polys else None
 
-        # Dissolve per tile — cheap (one tile's worth of polygons)
-        dissolved = unary_union(polys)
-        return {"type": "Feature", "geometry": mapping(dissolved), "properties": {}}
+        return (mask, xf_lo, crs, dissolved)
 
     except Exception as e:
         print(f"  FAIL {label}: {e}")
@@ -84,61 +79,53 @@ def main():
         sys.exit(0)
 
     print(f"Processing {len(tif_paths)} DEM tiles ({WORKERS} workers)...")
-
-    # Phase 1: per-tile gradient → mask → polygonize → dissolve, incremental merge
     t0 = time.time()
+
     from shapely.geometry import shape, mapping
     from shapely.ops import unary_union, transform as shp_transform
     import pyproj
-    merged = None
-    feature_geoms = []
+    poly_geoms = []
     done = 0
+
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         fut_map = {pool.submit(process_tile, p): p for p in tif_paths}
         for fut in as_completed(fut_map):
             done += 1
-            feat = fut.result()
+            result = fut.result()
             tile = fut_map[fut].stem
-            if feat:
-                g = shape(feat["geometry"])
-                feature_geoms.append(g)
-                # Incremental merge every 10 tiles to keep the union small
-                if len(feature_geoms) >= 10:
-                    merged = unary_union([merged] + feature_geoms) if merged else unary_union(feature_geoms)
-                    feature_geoms = []
-            print(f"  [{done}/{len(tif_paths)}] {tile}: {'✅' if feat else '⏭️'}")
+            if result:
+                _, _, _, dissolved = result
+                poly_geoms.append(dissolved)
 
-    # Final merge of remaining features
-    if feature_geoms:
-        merged = unary_union([merged] + feature_geoms) if merged else unary_union(feature_geoms)
+                # Incremental merge every 10 tiles
+                if len(poly_geoms) >= 10:
+                    merged_poly = unary_union(poly_geoms)
+                    poly_geoms = [merged_poly]
+
+            print(f"  [{done}/{len(tif_paths)}] {tile}: {'✅' if result else '⏭️'}", flush=True)
 
     t1 = time.time()
-    print(f"  Processing done: {t1-t0:.0f}s")
+    print(f"  Gradient computed: {done}/{len(tif_paths)} tiles ({t1-t0:.0f}s)")
 
-    if merged is None:
+    if not poly_geoms:
         print("No suitable areas found.")
         sys.exit(0)
 
-    # Simplify + reproject
-    dissolved = merged.simplify(SIMPLIFY_TOL * 2)
-
-    # Reproject from EPSG:3067 → EPSG:4326
+    # Final merge → simplify → reproject → save
+    merged = unary_union(poly_geoms).simplify(SIMPLIFY_TOL * 2)
     proj = pyproj.Transformer.from_crs("EPSG:3067", "EPSG:4326", always_xy=True).transform
-    dissolved_wgs84 = shp_transform(proj, dissolved)
+    merged_wgs84 = shp_transform(proj, merged)
 
     fc = {
         "type": "FeatureCollection",
-        "features": [{"type": "Feature", "geometry": mapping(dissolved_wgs84), "properties": {}}],
+        "features": [{"type": "Feature", "geometry": mapping(merged_wgs84), "properties": {}}],
     }
-    t3 = time.time()
-    print(f"  Merged into 1 multipolygon ({(time.time()-t1):.1f}s)")
 
-    # Save
-    out_path = SUIT_DIR / f"{AOI_CITY}_FINLAND_gradient_suitable_8pct.geojson"
-    with open(out_path, "w", encoding="utf-8") as f:
+    geojson_path = SUIT_DIR / f"{AOI_CITY}_FINLAND_gradient_suitable_8pct.geojson"
+    with open(geojson_path, "w", encoding="utf-8") as f:
         json.dump(fc, f)
-    kb = out_path.stat().st_size / 1024
-    print(f"  Saved: {out_path.name} ({kb:.0f} KB)")
+    kb = geojson_path.stat().st_size / 1024
+    print(f"  Saved: {geojson_path.name} ({kb:.0f} KB)")
 
     total = time.time() - t0
     print(f"\nDone in {total:.0f}s")

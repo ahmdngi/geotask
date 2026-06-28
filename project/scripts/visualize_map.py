@@ -54,9 +54,9 @@ def main():
                       strokeColor="#3498db", strokeWidth=2, strokeDash="5,5",
                       fillColor="#3498db", fillOpacity=0.03, popup=["city", "buffer_km"])
 
-    # ── Gradient <8% suitable area (pre-vectorized GeoJSON from process_dem_tiles) ──
-    gradient_geojson = SUIT_DIR / f"{prefix}_gradient_suitable_8pct.geojson"
-    gradient = load(gradient_geojson, "Gradient <8%")
+    # ── Gradient <8% suitable area (pre-generated GeoJSON) ──
+    geojson_path = SUIT_DIR / f"{prefix}_gradient_suitable_8pct.geojson"
+    gradient = load(geojson_path, "Gradient <8%")
     if gradient["features"]:
         m.add_geojson(gradient, name="Gradient <8%",
                       strokeColor="#90ee90", strokeWidth=0.5,
