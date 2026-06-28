@@ -49,10 +49,10 @@ def extract_nextjs_props(page) -> dict | None:
     return None
 
 
-def point_in_bbox(lon: float, lat: float) -> bool:
+def point_in_bbox(lon, lat) -> bool:
     """Check if a point falls within the AOI bounding box."""
-    min_lat, min_lon, max_lat, max_lon = AOI_BBOX_WGS84
-    return min_lat <= lat <= max_lat and min_lon <= lon <= max_lon
+    min_lat, min_lon, max_lat, max_lon = [float(v) for v in AOI_BBOX_WGS84]
+    return min_lat <= float(lat) <= max_lat and min_lon <= float(lon) <= max_lon
 
 
 def main():
