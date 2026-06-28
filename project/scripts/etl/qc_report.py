@@ -146,7 +146,7 @@ def main():
     # Save report
     ETL_DIR.mkdir(parents=True, exist_ok=True)
     report_path = ETL_DIR / f"{AOI_CITY}_FINLAND_qc_report.txt"
-    with open(report_path, "w") as f:
+    with open(report_path, "w", encoding="utf-8") as f:
         f.write(report)
     print(f"\nReport saved: {report_path}")
 
