@@ -15,11 +15,11 @@ ETL_DIR = Path(__file__).resolve().parent
 ROOT = ETL_DIR.parent
 
 STEPS = [
-    ("Finland boundary", ["python", str(ETL_DIR / "fetch_finland_boundary.py")]),
-    ("Clip to AOI", ["python", str(ETL_DIR / "clip_to_aoi.py")]),
-    ("Gradient <8%", ["python", str(ETL_DIR / "compute_gradient.py")]),
-    ("Merge exclusions", ["python", str(ETL_DIR / "merge_exclusions.py")]),
-    ("QC Report", ["python", str(ETL_DIR / "qc_report.py")]),
+    ("Finland boundary", [sys.executable, str(ETL_DIR / "fetch_finland_boundary.py")]),
+    ("Clip to AOI", [sys.executable, str(ETL_DIR / "clip_to_aoi.py")]),
+    ("Gradient <8%", [sys.executable, str(ETL_DIR / "compute_gradient.py")]),
+    ("Merge exclusions", [sys.executable, str(ETL_DIR / "merge_exclusions.py")]),
+    ("QC Report", [sys.executable, str(ETL_DIR / "qc_report.py")]),
 ]
 
 
