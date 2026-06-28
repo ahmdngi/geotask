@@ -68,16 +68,12 @@ class PickerHandler(SimpleHTTPRequestHandler):
                 continue
             print(f"── {script} ──", flush=True)
             try:
-                r = subprocess.run([sys.executable, str(sp)], capture_output=True, text=True, timeout=600)
-                if r.returncode == 0:
-                    for line in r.stdout.strip().split("\n")[-3:]:
-                        if line.strip():
-                            print(f"  {line}")
-                else:
-                    err = r.stderr.strip()[:300] or r.stdout.strip()[-200:]
-                    print(f"  FAILED: {err}")
+                r = subprocess.run([sys.executable, str(sp)], timeout=1800,
+                                   env={**os.environ, "PYTHONUNBUFFERED": "1"})
+                if r.returncode != 0:
+                    print(f"  ❌ FAILED (exit {r.returncode})")
             except subprocess.TimeoutExpired:
-                print(f"  TIMEOUT")
+                print(f"  ⌛ TIMEOUT (1800s)")
             print()
 
         print(f"{'='*50}")
