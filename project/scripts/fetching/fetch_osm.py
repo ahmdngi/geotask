@@ -32,19 +32,36 @@ def overpass_query(query: str) -> dict:
     url = OVERPAST_URL
     max_retries = 3
     for attempt in range(max_retries + 1):
-        r = requests.post(
-            url,
-            data={"data": query},
-            headers={"User-Agent": UA},
-            timeout=120,
-        )
+        try:
+            r = requests.post(
+                url,
+                data={"data": query},
+                headers={"User-Agent": UA},
+                timeout=300,
+            )
+        except requests.Timeout:
+            print(f"  Request timed out (attempt {attempt+1})")
+            if attempt < max_retries:
+                continue
+            raise
+        except requests.RequestException as e:
+            print(f"  Request failed: {e}")
+            raise
+
         if r.status_code == 429 and attempt < max_retries:
             wait = 10 * (2**attempt)
             print(f"  Rate limited, retrying in {wait}s...")
             time.sleep(wait)
             continue
+        if r.status_code != 200:
+            print(f"  HTTP {r.status_code}: {r.text[:500]}")
         r.raise_for_status()
-        return r.json()
+        try:
+            return r.json()
+        except json.JSONDecodeError as e:
+            print(f"  JSON decode failed: {e}")
+            print(f"  Response preview: {r.text[:500]}")
+            raise
 
 
 def element_to_feature(el: dict) -> dict | None:
@@ -112,7 +129,7 @@ def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     q = (
-        f'[out:json][timeout:90][bbox:{OSM_BBOX}];'
+        f'[out:json][timeout:300][maxsize:1073741824][bbox:{OSM_BBOX}];'
         '('
         '  way["power"="line"]["voltage"~"400000|220000|110000"];'
         '  node["power"="substation"];'
