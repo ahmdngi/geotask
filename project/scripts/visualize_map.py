@@ -42,7 +42,7 @@ def main():
     power_plants = load(CLIP_DIR / f"{prefix}_osm_power_plants.geojson", "Power plants")
     datacenters = load(CLIP_DIR / f"{prefix}_datacentermap.geojson", "Data centers")
     parcels = load(CLIP_DIR / f"{prefix}_mml_land_parcels.geojson", "Land parcels")
-    urban = load(CLIP_DIR / f"{prefix}_urban_centers.geojson", "Urban centers")
+    urban = load(CLIP_DIR / f"{prefix}_osm_urban_centers.geojson", "Urban centers")
     natura = load(CLIP_DIR / f"{prefix}_natura2000.geojson", "Natura2000")
     exclusion = load(EXCL_DIR / f"{prefix}_exclusion_zones.geojson", "Exclusions")
     buffer = load(OUT_DIR / f"{prefix}_buffer.geojson", "Buffer")
