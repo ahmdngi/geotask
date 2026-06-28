@@ -73,13 +73,18 @@ def main():
         sys.exit(0)
 
     merged = gpd.pd.concat(dissolved, ignore_index=True)
+
+    # Dissolve everything into one — no overlapping polygons
+    merged = merged.dissolve().reset_index(drop=True)
+    merged["exclusion_type"] = "exclusion_zone"
+    merged["_source_file"] = "merged"
+
     merged = merged.to_crs("EPSG:4326")
     merged.to_file(out_path, driver="GeoJSON", encoding="utf-8")
 
-    print(f"\n  Merged: {len(merged)} features")
-    for t in merged["exclusion_type"]:
-        print(f"    {t}")
-    print(f"  Saved: {out_path.name}")
+    print(f"\n  Merged: 1 feature (all zones dissolved)")
+    print(f"  Area:   {merged.geometry.area.iloc[0] / 1e6:,.0f} km²")
+    print(f"  Saved:  {out_path.name}")
 
 
 if __name__ == "__main__":
