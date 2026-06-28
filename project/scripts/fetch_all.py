@@ -16,7 +16,7 @@ SCRIPTS_DIR = ROOT / "scripts" / "fetching"
 ALL_SCRIPTS = [
     "fetch_fingrid.py", "fetch_osm.py", "fetch_urban_centers.py",
     "fetch_natura2000.py", "fetch_flood_zones.py", "fetch_nature_reserves.py",
-    "fetch_land_parcels.py", "fetch_dem.py",
+    "fetch_land_parcels.py", "fetch_datacentermap.py", "fetch_dem.py",
 ]
 
 
