@@ -1,105 +1,108 @@
-# KRIOS GIS Assignment Project
+# GIS Site Suitability — Finland Data Centers
 
-Geospatial site suitability analysis for data center siting in Finland.
+Geospatial data pipeline for data center siting analysis in Finland. Downloads and processes 9 data layers, computes slope gradient, clips to AOI, and produces an interactive map.
 
 ## Structure
 
 ```
 project/
 ├── config/
-│   ├── aoi.json              # AOI city + bbox (set via city picker or manually)
-│   ├── keys.json             # API keys template (fill in before MML scripts)
-│   └── config.py             # Shared config loader (reads aoi.json + keys.json)
+│   ├── aoi.json           # AOI center + buffer radius
+│   ├── keys.json          # API keys (MML — fill in before fetch)
+│   └── config.py          # Shared config loader
 ├── templates/
-│   └── city_picker.html      # Leaflet interactive city selector (12 Finnish cities)
+│   └── city_picker.html   # Leaflet city selector
 ├── data/
-│   └── raw/                  # All fetched layers land here
+│   ├── raw/               # Fetched layers
+│   └── etl/               # Processed data (clipped, suitability, exclusions)
 ├── scripts/
-│   ├── city_picker.py        # Starts local HTTP server → Leaflet city picker → auto-runs fetching
-│   ├── run_all.py            # Orchestrator — runs fetch scripts in order
+│   ├── city_picker.py     # Interactive server → auto-fetch
+│   ├── run_all.py         # Fetch orchestrator
+│   ├── run_etl.py         # ETL orchestrator
+│   ├── visualize_map.py   # Interactive map
 │   └── fetching/
-│       ├── __init__.py
-│       ├── fetch_fingrid.py      # Fingrid grid substation capacity
-│       ├── fetch_osm.py          # OSM power lines, substations, plants, data centers
-│       ├── fetch_urban_centers.py # Cities/towns with population >= 100k
-│       ├── fetch_natura2000.py   # Natura 2000 protected sites
-│       ├── fetch_flood_zones.py  # River + sea flood hazard zones (SYKE WFS)
-│       ├── fetch_nature_reserves.py # State/private nature reserves (SYKE WFS)
-│       ├── fetch_land_parcels.py # MML land parcels (kiinteistöt — needs API key)
-│       └── fetch_dem.py          # MML 2m digital elevation model (needs API key)
-├── notebooks/
-│   └── 01_exploration.ipynb  # Exploration notebook
-├── outputs/                  # Final deliverables
-├── decisions/                # Assumptions, limitations, decision log
-└── .gitignore                # Ignores data/, keys.json, __pycache__
+│       ├── fetch_fingrid.py       # Fingrid grid capacity
+│       ├── fetch_osm.py           # OSM power lines/substations/plants/DCs
+│       ├── fetch_urban_centers.py # Cities ≥100k
+│       ├── fetch_natura2000.py    # Natura 2000 sites
+│       ├── fetch_flood_zones.py   # River + sea flood zones
+│       ├── fetch_nature_reserves.py # State/private reserves
+│       ├── fetch_land_parcels.py  # MML parcels (needs API key)
+│       ├── fetch_dem.py           # MML 2m DEM (needs API key)
+│       └── fetch_datacentermap.py # Data Center Map scraper
+│   └── etl/
+│       ├── fetch_finland_boundary.py # Finland boundary (OSM)
+│       ├── clip_to_aoi.py            # Clip all data to AOI
+│       ├── compute_gradient.py       # Slope <8% mask
+│       ├── merge_exclusions.py       # Merge exclusion zones
+│       └── qc_report.py              # Validation report
+├── outputs/
+│   ├── candidates.geojson   # Candidate parcels (placeholder — scoring TBD)
+│   ├── candidate_scores.csv # Ranked scores (placeholder — scoring TBD)
+│   └── final_map.html       # Final deliverable map
+└── .gitignore
 ```
 
-## Workflow
+## Quick start
 
-### 1. Set API keys
+### 1. API key
 
-Get a free MML key at [omatili.maanmittauslaitos.fi](https://omatili.maanmittauslaitos.fi) and save it:
+Get a free MML key at [omatili.maanmittauslaitos.fi](https://omatili.maanmittauslaitos.fi) and save:
 
 ```bash
 echo '{"MML_KEY": "your-key-here"}' > config/keys.json
 ```
 
-### 2. Pick a city
-
-Two ways:
+### 2. Fetch data
 
 ```bash
-# Interactive Leaflet map — click a city, hit "Save & Close",
-# all 8 fetch scripts run automatically:
+# Pick a city interactively — runs all fetch scripts on save:
 python scripts/city_picker.py
-# Opens http://127.0.0.1:8765 — data fetching starts right after save
 
-# Or edit config/aoi.json directly then run manually:
-# {"city": "Tampere", "bbox_wgs84": [60.9978, 23.2616, 61.9978, 24.2616]}
+# Or manually:
+python scripts/run_all.py
 ```
 
-### 3. Fetch data (if not using city picker auto-run)
+### 3. Run ETL
 
 ```bash
-# Fetch everything:
-python scripts/run_all.py
-
-# Select specific layers:
-python scripts/run_all.py --only fingrid osm natura2000
-
-# Skip slow ones (DEM, land parcels):
-python scripts/run_all.py --skip dem land_parcels
+python scripts/run_etl.py
 ```
 
-### 4. Output naming
+### 4. View map
 
-All layers land in `data/raw/` as:
+```bash
+python scripts/visualize_map.py
 ```
-{City}_FINLAND_{layer}.geojson
-```
-Example: `Helsinki_FINLAND_fingrid_substations.geojson`
 
-All outputs are reprojected to **EPSG:3067** (Finnish TM35fin national standard).
+## Data sources
 
-## Data Sources
+| Layer | Source |
+|-------|--------|
+| Grid capacity | Fingrid ArcGIS FeatureServer |
+| Power network | OSM Overpass API |
+| Urban centers | OSM |
+| Natura 2000 | EEA ArcGIS REST |
+| Flood zones | SYKE WFS |
+| Nature reserves | SYKE WFS |
+| Land parcels | MML OGC API Features (key) |
+| DEM 2m | MML OGC API Processes (key) |
+| Data centers | datacentermap.com |
 
-| Layer | Source | Auth | CRS |
-|-------|--------|------|-----|
-| Grid capacity | Fingrid ArcGIS FeatureServer | None | EPSG:3067 native |
-| Power network | OSM Overpass API | User-Agent | WGS84 → EPSG:3067 |
-| Urban centers | OSM Overpass API | User-Agent | WGS84 → EPSG:3067 |
-| Natura 2000 | EEA ArcGIS REST | None | WGS84 → EPSG:3067 |
-| Flood zones | SYKE WFS | None | WGS84 → EPSG:3067 |
-| Nature reserves | SYKE WFS | None | WGS84 → EPSG:3067 |
-| Land parcels | MML OGC API Features | MML_KEY | EPSG:3067 native |
-| DEM 2m | MML OGC API Processes | MML_KEY | EPSG:3067 native |
+## Pipeline
 
-## Exclusion Zones (No Filtering)
+1. **Fetch** — downloads each layer to `data/raw/` as GeoJSON
+2. **Finland boundary** — from OSM relation 54224
+3. **Clip** — clip to AOI circular buffer + Finland boundary
+4. **Gradient** — slope <8% binary mask raster + coverage outline
+5. **Exclusions** — merge Natura2000 + flood + reserves into one layer
+6. **QC report** — validates CRS, geometry, feature counts
+7. **Map** — interactive Leaflet map with all layers + slope overlay
 
-Natura 2000, flood zones, and nature reserves are fetched as-is — all features intersecting the AOI bbox are saved without filtering. Filtering happens in the scoring stage.
+All outputs in EPSG:4326 (GeoJSON) / EPSG:3067 (TIFF).
 
 ## Dependencies
 
 ```
-geopandas pyproj shapely pandas requests rasterio
+geopandas pyproj shapely requests rasterio scipy matplotlib
 ```

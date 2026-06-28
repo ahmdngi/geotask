@@ -55,6 +55,12 @@ def main():
                       strokeColor="#3498db", strokeWidth=2, strokeDash="5,5",
                       fillColor="#3498db", fillOpacity=0.03, popup=["city", "buffer_km"])
 
+    # ── Gradient slope raster overlay ──
+    slope_tif = SUIT_DIR / f"{prefix}_slope_percent.tiff"
+    if slope_tif.exists():
+        m.add_cog(str(slope_tif), name="Slope (%)", colormap="terrain")
+        m.add_colorbar(colormap="terrain", vmin=0, vmax=30, label="Slope", units="%")
+
     if parcels["features"]:
         m.add_geojson(parcels, name="Land parcels",
                       strokeColor="#8e44ad", strokeWidth=1,
