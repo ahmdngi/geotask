@@ -12,7 +12,12 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 ETL_DIR = ROOT / "data" / "etl"
-URL = "https://www.naturalearthdata.com/http//www.naturalearthdata.com/download/10m/cultural/ne_10m_admin_0_countries.zip"
+URLS = [
+    # Natural Earth CDN (primary) — sometimes flaky
+    "https://www.naturalearthdata.com/http//www.naturalearthdata.com/download/10m/cultural/ne_10m_admin_0_countries.zip",
+    # GitHub mirror (fallback)
+    "https://github.com/nvkelso/natural-earth-vector/raw/master/10m_cultural/ne_10m_admin_0_countries.zip",
+]
 
 
 def main():
@@ -20,8 +25,19 @@ def main():
     out = ETL_DIR / "finland_boundary.geojson"
 
     print("Downloading Natural Earth countries...")
-    r = requests.get(URL, headers={"User-Agent": "GIS-Script/1.0"}, timeout=120)
-    r.raise_for_status()
+    r = None
+    for i, url in enumerate(URLS):
+        try:
+            r = requests.get(url, headers={"User-Agent": "GIS-Script/1.0"}, timeout=120)
+            r.raise_for_status()
+            print(f"  Source {i + 1}/{len(URLS)}: OK")
+            break
+        except requests.RequestException as e:
+            print(f"  Source {i + 1}/{len(URLS)} failed: {e}")
+            continue
+    if r is None:
+        print("ERROR: All download sources failed.")
+        sys.exit(1)
 
     with tempfile.TemporaryDirectory() as tmp:
         with zipfile.ZipFile(io.BytesIO(r.content)) as z:
