@@ -151,6 +151,9 @@ def main():
                 if gdf.geometry.geom_type.isin(["Polygon", "MultiPolygon"]).any():
                     gdf.geometry = gdf.geometry.simplify(5.0)
 
+                # GeoJSON spec requires WGS84 — auto-reproject
+                gdf = gdf.to_crs("EPSG:4326")
+
                 gdf.to_file(out_path, driver="GeoJSON", encoding="utf-8")
                 print(f"{len(gdf)} features")
             except Exception as e:

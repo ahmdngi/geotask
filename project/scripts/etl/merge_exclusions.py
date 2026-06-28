@@ -89,6 +89,9 @@ def main():
         sys.exit(0)
 
     merged = gpd.pd.concat(dissolved, ignore_index=True)
+    # GeoJSON spec requires WGS84
+    merged = merged.to_crs("EPSG:4326")
+
     merged.to_file(out_path, driver="GeoJSON", encoding="utf-8")
 
     print(f"\n  Merged exclusion zones: {len(merged)} total features")

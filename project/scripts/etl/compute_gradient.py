@@ -121,9 +121,13 @@ def main():
     gdf = gdf[gdf.geometry.is_valid & ~gdf.geometry.is_empty]
     if before != len(gdf):
         print(f"  Removed {before - len(gdf)} tiny polygons")
+
+    # GeoJSON spec requires WGS84
+    area_km2 = gdf.geometry.area.sum() / 1e6  # compute before reproject (area in 3067 m²)
+    gdf = gdf.to_crs("EPSG:4326")
+
     gdf.to_file(out_vector, driver="GeoJSON", encoding="utf-8")
 
-    area_km2 = gdf.geometry.area.sum() / 1e6
     total_px = suitable.size
     suitable_px = suitable.sum()
     pct = suitable_px / total_px * 100

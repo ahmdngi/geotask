@@ -1,8 +1,7 @@
 """
 Visualize all ETL layers using GeoLibre interactive map.
 
-Loads clipped + exclusion + suitability layers and renders an HTML map.
-Opens in browser automatically when run standalone.
+Matches the symbology from the exploration notebook (Chunk 4).
 
 Usage:
   python scripts/visualize_map.py                    # opens in browser
@@ -13,8 +12,6 @@ import json
 import sys
 import webbrowser
 from pathlib import Path
-
-import geopandas as gpd
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
@@ -27,9 +24,9 @@ EXCL_DIR = ROOT / "data" / "etl" / "exclusions"
 SUIT_DIR = ROOT / "data" / "etl" / "suitability"
 OUT_DIR = ROOT / "data" / "etl"
 
-# AOI center point
-CENTER_LAT = (AOI_BBOX_WGS84[0] + AOI_BBOX_WGS84[2]) / 2
+# AOI center point (lon, lat — GeoLibre order)
 CENTER_LON = (AOI_BBOX_WGS84[1] + AOI_BBOX_WGS84[3]) / 2
+CENTER_LAT = (AOI_BBOX_WGS84[0] + AOI_BBOX_WGS84[2]) / 2
 
 
 def load_geojson(path: Path, label: str = "") -> dict:
@@ -43,51 +40,53 @@ def load_geojson(path: Path, label: str = "") -> dict:
         if label:
             print(f"  {label}: {len(data.get('features', []))} features")
         return data
-    except Exception:
+    except Exception as e:
         if label:
-            print(f"  {label}: failed to load")
+            print(f"  {label}: failed to load ({e})")
         return {"type": "FeatureCollection", "features": []}
 
 
 def main():
     print(f"Building GeoLibre map — {AOI_CITY}")
     print(f"  Center: {CENTER_LAT:.4f}, {CENTER_LON:.4f}")
-    print(f"  Loading layers from: {CLIP_DIR}")
     print()
 
     # ── Load all layers ──
-    layers = {
-        "fingrid_substations": load_geojson(
-            CLIP_DIR / f"{AOI_CITY}_FINLAND_fingrid_substations.geojson",
-        ),
-        "power_lines": load_geojson(
-            CLIP_DIR / f"{AOI_CITY}_FINLAND_osm_power_lines.geojson",
-        ),
-        "substations": load_geojson(
-            CLIP_DIR / f"{AOI_CITY}_FINLAND_osm_substations.geojson",
-        ),
-        "power_plants": load_geojson(
-            CLIP_DIR / f"{AOI_CITY}_FINLAND_osm_power_plants.geojson",
-        ),
-        "urban_centers": load_geojson(
-            CLIP_DIR / f"{AOI_CITY}_FINLAND_urban_centers.geojson",
-        ),
-        "datacenters": load_geojson(
-            CLIP_DIR / f"{AOI_CITY}_FINLAND_datacentermap.geojson",
-        ),
-        "natura2000": load_geojson(
-            CLIP_DIR / f"{AOI_CITY}_FINLAND_natura2000.geojson",
-        ),
-    }
-
-    # Exclusion zones (from merge_exclusions.py)
-    exclusion = load_geojson(
-        EXCL_DIR / f"{AOI_CITY}_FINLAND_exclusion_zones.geojson",
+    fingrid = load_geojson(
+        CLIP_DIR / f"{AOI_CITY}_FINLAND_fingrid_substations.geojson",
+        "Fingrid substations",
     )
-
-    # Gradient suitability (from compute_gradient.py)
+    power_lines = load_geojson(
+        CLIP_DIR / f"{AOI_CITY}_FINLAND_osm_power_lines.geojson",
+        "Power lines",
+    )
+    substations = load_geojson(
+        CLIP_DIR / f"{AOI_CITY}_FINLAND_osm_substations.geojson",
+        "OSM substations",
+    )
+    power_plants = load_geojson(
+        CLIP_DIR / f"{AOI_CITY}_FINLAND_osm_power_plants.geojson",
+        "Power plants",
+    )
+    datacenters = load_geojson(
+        CLIP_DIR / f"{AOI_CITY}_FINLAND_datacentermap.geojson",
+        "Data centers",
+    )
+    urban_centers = load_geojson(
+        CLIP_DIR / f"{AOI_CITY}_FINLAND_urban_centers.geojson",
+        "Urban centers",
+    )
+    natura2000 = load_geojson(
+        CLIP_DIR / f"{AOI_CITY}_FINLAND_natura2000.geojson",
+        "Natura2000",
+    )
     gradient = load_geojson(
         SUIT_DIR / f"{AOI_CITY}_FINLAND_gradient_lt8.geojson",
+        "Gradient <8%",
+    )
+    exclusion = load_geojson(
+        EXCL_DIR / f"{AOI_CITY}_FINLAND_exclusion_zones.geojson",
+        "Exclusion zones",
     )
 
     # ── Build map ──
@@ -99,9 +98,9 @@ def main():
         height="700px",
     )
 
-    # 1. Fingrid substations
+    # 1. Fingrid substations — choropleth on consumption capacity (notebook match)
     m.add_choropleth(
-        layers["fingrid_substations"],
+        fingrid,
         column="Kulutus_25",
         name="Fingrid Substations (consumption MW)",
         class_count=5,
@@ -111,48 +110,48 @@ def main():
         popup=["SA", "Tyyppi", "Kulutus_25"],
     )
 
-    # 2. Power lines
+    # 2. Power lines — red (#e74c3c)
     m.add_geojson(
-        layers["power_lines"],
+        power_lines,
         name="Power lines (110-400kV OSM)",
         strokeColor="#e74c3c",
         strokeWidth=2,
         popup=["voltage", "name", "operator"],
     )
 
-    # 3. OSM substations
+    # 3. OSM substations — blue (#3498db)
     m.add_geojson(
-        layers["substations"],
+        substations,
         name="Substations (OSM)",
         strokeColor="#3498db",
         circleRadius=6,
         popup=["name", "voltage"],
     )
 
-    # 4. Power plants
+    # 4. Power plants — green (#2ecc71)
     m.add_geojson(
-        layers["power_plants"],
+        power_plants,
         name="Power plants (OSM)",
         strokeColor="#2ecc71",
         circleRadius=8,
         popup=["name", "generator:source", "plant:source"],
     )
 
-    # 5. Data centers
-    if layers["datacenters"]["features"]:
+    # 5. Data centers — purple (#9b59b6)
+    if datacenters["features"]:
         m.add_geojson(
-            layers["datacenters"],
+            datacenters,
             name="Data Center Map (verified)",
             strokeColor="#9b59b6",
             fillColor="#9b59b6",
             circleRadius=8,
-            popup=["companyname", "name", "city"],
+            popup=["companyname", "name", "city", "market_mw_live"],
         )
 
-    # 6. Urban centers
-    if layers["urban_centers"]["features"]:
+    # 6. Urban centers — orange (#f39c12), circle, 50% fill
+    if urban_centers["features"]:
         m.add_geojson(
-            layers["urban_centers"],
+            urban_centers,
             name="Urban centers (100k+)",
             strokeColor="#f39c12",
             fillColor="#f39c12",
@@ -161,19 +160,19 @@ def main():
             popup=["name", "population"],
         )
 
-    # 7. Natura2000
-    if layers["natura2000"]["features"]:
+    # 7. Natura2000 — green (#27ae60), transparent fill
+    if natura2000["features"]:
         m.add_geojson(
-            layers["natura2000"],
+            natura2000,
             name="Natura2000 sites",
             strokeColor="#27ae60",
             fillColor="#27ae60",
             fillOpacity=0.15,
             strokeWidth=1,
-            popup=["SITENAME", "SITETYPE"],
+            popup=["SITENAME", "SITETYPE", "SITECODE"],
         )
 
-    # 8. Gradient suitable (<8%)
+    # 8. Gradient suitable (<8%) — green (#2ecc71), very transparent
     if gradient["features"]:
         m.add_geojson(
             gradient,
@@ -184,11 +183,11 @@ def main():
             strokeWidth=0.5,
         )
 
-    # 9. Exclusion zones
+    # 9. Exclusion zones — red (#e74c3c), very transparent
     if exclusion["features"]:
         m.add_geojson(
             exclusion,
-            name="Exclusion zones",
+            name="Exclusion zones (fatal flaws)",
             strokeColor="#e74c3c",
             fillColor="#e74c3c",
             fillOpacity=0.08,
@@ -206,10 +205,9 @@ def main():
     if not save_only:
         webbrowser.open(out_path.as_uri())
         print("  Opened in browser")
-    else:
-        print("  Use --save-only to skip browser open")
 
-    print(f"  File size: {out_path.stat().st_size / 1024:.0f} KB")
+    size_kb = out_path.stat().st_size / 1024
+    print(f"  File size: {size_kb:.0f} KB")
 
 
 if __name__ == "__main__":
