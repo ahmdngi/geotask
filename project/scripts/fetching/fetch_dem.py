@@ -17,7 +17,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 from config.config import AOI_BBOX_WGS84, AOI_BUFFER_POLY, AOI_CITY, MML_KEY, MML_DEM_PROC
 
-TILE_SIZE_M = 20000      # 20 km × 20 km tiles (~400 km² each)
+TILE_SIZE_M = 10000      # 10 km × 10 km tiles (~100 km² each) — MML rejects larger
 TILES_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw" / "dem_tiles"
 WORKERS = 4
 POLL_INTERVAL = 5
