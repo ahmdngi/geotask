@@ -26,12 +26,23 @@ def main():
         sys.exit(1)
 
     data = r.json()
-    features = data.get("features", [])
-    if not features:
-        print("ERROR: No features in OSM response")
-        sys.exit(1)
 
-    gdf = gpd.GeoDataFrame.from_features(features, crs="EPSG:4326")
+    # API returns a raw geometry object (MultiPolygon), not a FeatureCollection
+    geom_type = data.get("type", "")
+    if geom_type in ("Polygon", "MultiPolygon"):
+        gdf = gpd.GeoDataFrame.from_features(
+            [{"type": "Feature", "geometry": data, "properties": {"name": "Finland"}}],
+            crs="EPSG:4326",
+        )
+    elif geom_type == "FeatureCollection":
+        features = data.get("features", [])
+        if not features:
+            print("ERROR: Empty FeatureCollection from OSM")
+            sys.exit(1)
+        gdf = gpd.GeoDataFrame.from_features(features, crs="EPSG:4326")
+    else:
+        print(f"ERROR: Unexpected OSM response type: {geom_type}")
+        sys.exit(1)
     # Keep only the main Finland polygon
     finland = gdf if len(gdf) == 1 else gdf[gdf["name"].str.lower().str.contains("finland", na=False)]
     if finland.empty:
