@@ -87,10 +87,20 @@ def main():
                 if gdf.empty:
                     print("empty")
                     continue
+
+                # Fix invalid geometries BEFORE clipping
                 if gdf.crs is None:
                     gdf.set_crs(TARGET_CRS, inplace=True)
                 elif gdf.crs.to_string() != TARGET_CRS:
                     gdf = gdf.to_crs(TARGET_CRS)
+
+                invalid = ~gdf.geometry.is_valid
+                if invalid.any():
+                    gdf.loc[invalid, "geometry"] = gdf.loc[invalid, "geometry"].buffer(0)
+                    gdf = gdf[gdf.geometry.is_valid]
+                    if gdf.empty:
+                        print("empty (all invalid)")
+                        continue
 
                 gdf = gpd.clip(gdf, aoi_mask)
                 if boundary is not None and not gdf.empty:
