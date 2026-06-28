@@ -54,13 +54,31 @@ def main():
                       strokeColor="#3498db", strokeWidth=2, strokeDash="5,5",
                       fillColor="#3498db", fillOpacity=0.03, popup=["city", "buffer_km"])
 
-    # ── Gradient <8% suitable area (pre-generated GeoJSON) ──
-    geojson_path = SUIT_DIR / f"{prefix}_gradient_suitable_8pct.geojson"
-    gradient = load(geojson_path, "Gradient <8%")
-    if gradient["features"]:
-        m.add_geojson(gradient, name="Gradient <8%",
-                      strokeColor="#90ee90", strokeWidth=0.5,
-                      fillColor="#90ee90", fillOpacity=0.4)
+    # ── Gradient <8% suitable area (polygonized from tiny mask TIFF) ──
+    mask_tif = SUIT_DIR / f"{prefix}_gradient_suitable_8pct.tiff"
+    if mask_tif.exists():
+        import rasterio
+        from rasterio.features import shapes
+        from shapely.geometry import shape, mapping
+        from shapely.ops import unary_union, transform as shp_transform
+        import pyproj
+        with rasterio.open(mask_tif) as src:
+            mask = src.read(1)
+            xf = src.transform
+        polys = []
+        for geom, val in shapes(mask, mask=mask, transform=xf):
+            if val == 1:
+                polys.append(shape(geom).simplify(5))
+        if polys:
+            merged = unary_union(polys).simplify(10)
+            proj = pyproj.Transformer.from_crs("EPSG:3067", "EPSG:4326", always_xy=True).transform
+            merged_wgs84 = shp_transform(proj, merged)
+            fc = {"type": "FeatureCollection",
+                  "features": [{"type": "Feature", "geometry": mapping(merged_wgs84), "properties": {}}]}
+            m.add_geojson(fc, name="Gradient <8%",
+                          strokeColor="#90ee90", strokeWidth=0.5,
+                          fillColor="#90ee90", fillOpacity=0.4)
+            print(f"  Gradient <8%: polygonized from mask TIFF")
 
     if parcels["features"]:
         m.add_geojson(parcels, name="Land parcels",
