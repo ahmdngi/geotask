@@ -16,9 +16,8 @@ ROOT = ETL_DIR.parent
 
 STEPS = [
     ("Finland boundary", [sys.executable, str(ETL_DIR / "fetch_finland_boundary.py")]),
-    ("Mosaic DEM", [sys.executable, str(ETL_DIR / "mosaic_dem.py")]),
+    ("Process DEM tiles", [sys.executable, str(ETL_DIR / "process_dem_tiles.py")]),
     ("Clip to AOI", [sys.executable, str(ETL_DIR / "clip_to_aoi.py")]),
-    ("Gradient <8%", [sys.executable, str(ETL_DIR / "compute_gradient.py")]),
     ("Merge exclusions", [sys.executable, str(ETL_DIR / "merge_exclusions.py")]),
     ("QC Report", [sys.executable, str(ETL_DIR / "qc_report.py")]),
 ]
