@@ -1,13 +1,11 @@
 """
-Fetch Finland national boundary from OSM (admin_level=2).
+Fetch Finland national boundary from Natural Earth (10m resolution).
 
-Source: Overpass API (no auth)
+Source: Natural Earth vector data (no auth, no API key)
 Output: data/etl/finland_boundary.geojson (EPSG:3067)
 """
 
-import json
 import sys
-import time
 from pathlib import Path
 
 import geopandas as gpd
@@ -20,7 +18,7 @@ from config.config import AOI_CITY
 
 ETL_DIR = ROOT / "data" / "etl"
 TARGET_CRS = "EPSG:3067"
-UA = "KRIOS-GIS/1.0 (assignment)"
+NE_URL = "https://github.com/nvkelso/natural-earth-vector/raw/master/geojson/ne_10m_admin_0_countries.geojson"
 
 
 def main():
@@ -31,72 +29,27 @@ def main():
         print(f"  Finland boundary already exists — skipping fetch")
         return
 
-    q = (
-        '[out:json][timeout:60];'
-        'relation["admin_level"="2"]["name"="Finland"];'
-        'out geom;'
-    )
+    world_path = ETL_DIR / "ne_10m_admin_0_countries.geojson"
 
-    print("Fetching Finland boundary from OSM...")
-    r = requests.post(
-        "https://overpass-api.de/api/interpreter",
-        data={"data": q},
-        headers={"User-Agent": UA},
-        timeout=120,
-    )
+    print("Downloading Natural Earth countries (13 MB)...")
+    r = requests.get(NE_URL, timeout=60)
     r.raise_for_status()
-    data = r.json()
-    elements = data.get("elements", [])
-    print(f"  Found {len(elements)} relations")
+    world_path.write_bytes(r.content)
 
-    if not elements:
-        print("  ERROR: No Finland boundary found")
-        sys.exit(1)
+    print("Extracting Finland...")
+    gdf = gpd.read_file(world_path)
+    fin = gdf[gdf["ISO_A3"] == "FIN"].copy()
+    fin = fin.set_crs("EPSG:4326")
+    fin = fin.to_crs(TARGET_CRS)
+    fin.to_file(out_path, driver="GeoJSON", encoding="utf-8")
 
-    # Convert to GeoJSON
-    features = []
-    for el in elements:
-        if el["type"] != "relation" or "members" not in el:
-            continue
-        tags = el.get("tags", {})
-
-        # Build geometry from member ways
-        coords_list = []
-        for member in el.get("members", []):
-            if member.get("type") == "way" and "geometry" in member:
-                way_coords = [[p["lon"], p["lat"]] for p in member["geometry"]]
-                if len(way_coords) >= 4:
-                    coords_list.append(way_coords)
-
-        if not coords_list:
-            continue
-
-        geom = {
-            "type": "MultiPolygon",
-            "coordinates": [[c] for c in coords_list],
-        }
-        features.append({
-            "type": "Feature",
-            "geometry": geom,
-            "properties": {
-                "name": tags.get("name", "Finland"),
-                "admin_level": tags.get("admin_level"),
-                "iso_code": tags.get("ISO3166-1"),
-            },
-        })
-
-    fc = {"type": "FeatureCollection", "features": features}
-    gdf = gpd.GeoDataFrame.from_features(fc, crs="EPSG:4326")
-    gdf = gdf.to_crs(TARGET_CRS)
-
-    # Dissolve all boundary parts into single polygon
-    dissolved = gdf.dissolve()
-    dissolved.to_file(out_path, driver="GeoJSON", encoding="utf-8")
-
-    area_km2 = dissolved.geometry.area.iloc[0] / 1e6
+    area_km2 = fin.geometry.area.iloc[0] / 1e6
     print(f"  Area:  {area_km2:,.0f} km²")
     print(f"  CRS:   {TARGET_CRS}")
     print(f"  Saved: {out_path.name}")
+
+    # Cleanup
+    world_path.unlink()
 
 
 if __name__ == "__main__":
