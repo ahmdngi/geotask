@@ -57,8 +57,8 @@ def main():
     # ── Gradient <8% binary mask overlay ──
     mask_tif = SUIT_DIR / f"{prefix}_gradient_suitable_8pct.tiff"
     if mask_tif.exists():
-        m.add_cog(str(mask_tif), name="Gradient <8%")
-        m.add_colorbar(colormap="RdYlGn", vmin=0, vmax=1, label="Gradient", units="<8%")
+        m.add_cog(str(mask_tif), name="Gradient <8%",
+                  colormap="Greens", opacity=0.4)
 
     if parcels["features"]:
         m.add_geojson(parcels, name="Land parcels",
