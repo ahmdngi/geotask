@@ -1,6 +1,9 @@
 {
   "city": "Helsinki",
-  "center_wgs84": [60.1666, 24.9435],
+  "center_wgs84": [
+    60.1666,
+    24.9435
+  ],
   "buffer_km": 100,
   "description": "100km buffer around Helsinki center (60.1666, 24.9435)"
 }
