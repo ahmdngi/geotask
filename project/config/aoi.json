@@ -1,0 +1,6 @@
+{
+  "city": "Helsinki",
+  "bbox_wgs84": [59.7, 23.9, 60.7, 26.0],
+  "description": "[min_lat, min_lon, max_lat, max_lon] — 100km around Helsinki"
+}
+

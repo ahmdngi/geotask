@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KRIOS GIS — Pick your AOI city</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+body { display: flex; flex-direction: column; }
+#map { flex: 1; }
+#bar {
+  padding: 12px 20px;
+  background: #1a1a2e;
+  color: #eee;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-top: 2px solid #e94560;
+}
+#bar h2 { font-size: 16px; color: #e94560; font-weight: 600; }
+#bar .info { font-size: 13px; color: #aaa; }
+#bar button {
+  margin-left: auto;
+  padding: 8px 24px;
+  background: #e94560;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+}
+#bar button:hover { background: #d63850; }
+#status { font-size: 13px; padding: 4px 12px; border-radius: 4px; }
+#status.selected { background: #2ecc71; color: #fff; }
+#status.waiting { background: #555; color: #ccc; }
+#preview { font-size: 12px; color: #7f8c8d; max-width: 500px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend {
+  background: rgba(255,255,255,0.92);
+  padding: 10px 14px;
+  border-radius: 6px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.2);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.legend i { width: 12px; height: 12px; display: inline-block; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="bar">
+  <h2>📍 AOI City Picker</h2>
+  <span id="status" class="waiting">⏳ waiting...</span>
+  <span id="preview"></span>
+  <button id="confirmBtn" disabled>⬇ Save & Close</button>
+</div>
+
+<script>
+const CITIES = [
+  { name: "Helsinki",     lat: 60.1666, lng: 24.9435, buffer: 100 },
+  { name: "Tampere",      lat: 61.4978, lng: 23.7616, buffer: 100 },
+  { name: "Turku",        lat: 60.4516, lng: 22.2670, buffer: 100 },
+  { name: "Oulu",         lat: 65.0118, lng: 25.4702, buffer: 100 },
+  { name: "Jyväskylä",    lat: 62.2426, lng: 25.7473, buffer: 100 },
+  { name: "Kuopio",       lat: 62.8920, lng: 27.6770, buffer: 100 },
+  { name: "Lahti",        lat: 60.9827, lng: 25.6612, buffer: 100 },
+  { name: "Vaasa",        lat: 63.0960, lng: 21.6158, buffer: 100 },
+  { name: "Pori",         lat: 61.4848, lng: 21.7972, buffer: 100 },
+  { name: "Joensuu",      lat: 62.6010, lng: 29.7636, buffer: 100 },
+  { name: "Lappeenranta", lat: 61.0587, lng: 28.1887, buffer: 100 },
+  { name: "Rovaniemi",    lat: 66.5039, lng: 25.7294, buffer: 100 },
+];
+
+// EPSG:3067 → WGS84 buffer helper: approximate (1° ≈ 111km)
+let selected = null;
+
+const map = L.map('map', { zoomControl: true }).setView([63.0, 25.5], 5);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OSM contributors &copy; CARTO',
+  maxZoom: 18,
+}).addTo(map);
+
+// Buffer circles
+function addCity(city) {
+  const degPerKm = 1 / 111;
+  const radius = city.buffer * degPerKm;
+
+  const circle = L.circle([city.lat, city.lng], {
+    radius: city.buffer * 1000,
+    color: '#e94560',
+    fillColor: '#e94560',
+    fillOpacity: 0.08,
+    weight: 2,
+    dashArray: '6 6',
+  }).addTo(map);
+
+  const marker = L.circleMarker([city.lat, city.lng], {
+    radius: 8,
+    color: '#e94560',
+    fillColor: '#fff',
+    fillOpacity: 1,
+    weight: 3,
+  }).addTo(map);
+
+  marker.bindTooltip(city.name, { permanent: true, direction: 'top', offset: [0, -12] });
+
+  const onClick = () => {
+    selected = city;
+    document.getElementById('status').textContent = '✓ ' + city.name;
+    document.getElementById('status').className = 'selected';
+    document.getElementById('preview').textContent =
+      `bbox: [${(city.lat - radius).toFixed(2)}, ${(city.lng - radius).toFixed(2)}, ${(city.lat + radius).toFixed(2)}, ${(city.lng + radius).toFixed(2)}]  •  ${city.buffer}km buffer`;
+    document.getElementById('confirmBtn').disabled = false;
+    map.fitBounds(circle.getBounds(), { padding: [40, 40] });
+  };
+
+  marker.on('click', onClick);
+  circle.on('click', onClick);
+}
+
+CITIES.forEach(addCity);
+
+// Confirm → POST to server
+document.getElementById('confirmBtn').addEventListener('click', async () => {
+  if (!selected) return;
+  const degPerKm = 1 / 111;
+  const r = selected.buffer * degPerKm;
+  const bbox = [
+    +(selected.lat - r).toFixed(4),
+    +(selected.lng - r).toFixed(4),
+    +(selected.lat + r).toFixed(4),
+    +(selected.lng + r).toFixed(4),
+  ];
+  const payload = { city: selected.name, bbox_wgs84: bbox };
+
+  try {
+    const resp = await fetch('/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (resp.ok) {
+      document.getElementById('status').textContent = '✓ Saved — you can close this tab';
+      document.getElementById('confirmBtn').textContent = '✅ Saved';
+      document.getElementById('confirmBtn').disabled = true;
+    } else {
+      const err = await resp.text();
+      alert('Save failed: ' + err);
+    }
+  } catch (e) {
+    alert('Could not reach server: ' + e.message);
+  }
+});
+</script>
+</body>
+</html>
