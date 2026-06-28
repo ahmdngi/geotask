@@ -15,7 +15,6 @@ import time
 from pathlib import Path
 
 import requests
-from shapely.geometry import shape
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
@@ -70,20 +69,17 @@ def fetch_large_parcels(bbox_3067: str) -> list[dict]:
 
         kept = 0
         for f in features:
-            g = f.get("geometry")
-            if not g or g.get("type") not in ("Polygon", "MultiPolygon"):
+            props = f.get("properties", {})
+            ha = props.get("Area_ha")
+            if ha is None:
                 continue
-            try:
-                s = shape(g)
-                ha = s.area / 10000
-                pid = f.get("properties", {}).get("kiinteistotunnus", "")
-                if ha >= 10 and pid not in seen_ids:
-                    seen_ids.add(pid)
-                    f["properties"]["area_ha"] = round(ha, 1)
-                    all_large.append(f)
-                    kept += 1
-            except Exception:
-                pass
+            ha = float(ha)
+            pid = props.get("kiinteistotunnus", "")
+            if ha >= 10 and pid not in seen_ids:
+                seen_ids.add(pid)
+                props["area_ha"] = round(ha, 1)
+                all_large.append(f)
+                kept += 1
 
         print(f"  Page {page}: {len(features)} features -> {kept} kept (total: {len(all_large)})")
 
