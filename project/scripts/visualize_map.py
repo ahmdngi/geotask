@@ -54,11 +54,11 @@ def main():
                       strokeColor="#3498db", strokeWidth=2, strokeDash="5,5",
                       fillColor="#3498db", fillOpacity=0.03, popup=["city", "buffer_km"])
 
-    # ── Gradient slope raster overlay ──
-    slope_tif = SUIT_DIR / f"{prefix}_slope_percent.tiff"
-    if slope_tif.exists():
-        m.add_cog(str(slope_tif), name="Slope (%)", colormap="terrain")
-        m.add_colorbar(colormap="terrain", vmin=0, vmax=30, label="Slope", units="%")
+    # ── Gradient <8% binary mask overlay ──
+    mask_tif = SUIT_DIR / f"{prefix}_gradient_suitable_8pct.tiff"
+    if mask_tif.exists():
+        m.add_cog(str(mask_tif), name="Gradient <8%")
+        m.add_colorbar(colormap="RdYlGn", vmin=0, vmax=1, label="Gradient", units="<8%")
 
     if parcels["features"]:
         m.add_geojson(parcels, name="Land parcels",
