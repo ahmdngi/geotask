@@ -90,7 +90,19 @@ def save_geojson(features: list[dict], label: str):
 
     safe_name = label.replace(" ", "_").replace("/", "_").replace("(", "_").replace(")", "_")
     out_path = DATA_DIR / f"{AOI_CITY}_FINLAND_osm_{safe_name}.geojson"
-    gdf.to_file(out_path, driver="GeoJSON", encoding="utf-8")
+
+    try:
+        gdf.to_file(out_path, driver="GeoJSON", encoding="utf-8")
+    except Exception as e:
+        print(f"  ERROR writing {out_path.name}: {e}")
+        import os
+        bak = out_path.with_suffix(".bak")
+        if out_path.exists():
+            os.replace(out_path, bak)
+            print(f"  Renamed existing to {bak.name}, retrying...")
+            gdf.to_file(out_path, driver="GeoJSON", encoding="utf-8")
+        else:
+            raise
 
     types = gdf.geometry.geom_type.value_counts().to_dict()
     print(f"  {label}: {len(gdf)} features ({dict(types)}), saved -> {out_path.name}")
