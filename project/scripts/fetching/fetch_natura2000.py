@@ -103,7 +103,7 @@ def main():
     gdf = gpd.GeoDataFrame.from_features(fc, crs="EPSG:4326")
     gdf = gdf.to_crs(TARGET_CRS)
 
-    out_path = DATA_DIR / f"{AOI_CITY}_FINLAND_natura2000.geojson"
+    out_path = DATA_DIR / f"{AOI_CITY}_FINLAND_eea_natura2000.geojson"
     gdf.to_file(out_path, driver="GeoJSON", encoding="utf-8")
 
     total_area = gdf["Area_ha"].sum() if "Area_ha" in gdf.columns else 0

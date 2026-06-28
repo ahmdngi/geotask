@@ -94,7 +94,7 @@ def main():
     gdf = gpd.GeoDataFrame.from_features(fc, crs="EPSG:4326")
     gdf = gdf.to_crs(TARGET_CRS)
 
-    out_path = DATA_DIR / f"{AOI_CITY}_FINLAND_urban_centers.geojson"
+    out_path = DATA_DIR / f"{AOI_CITY}_FINLAND_osm_urban_centers.geojson"
     gdf.to_file(out_path, driver="GeoJSON", encoding="utf-8")
 
     names = sorted(gdf["name"].tolist())

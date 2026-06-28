@@ -115,7 +115,7 @@ def main():
     fc = {"type": "FeatureCollection", "features": features}
     gdf = gpd.GeoDataFrame.from_features(fc, crs="EPSG:3067")
 
-    out_path = DATA_DIR / f"{AOI_CITY}_FINLAND_land_parcels.geojson"
+    out_path = DATA_DIR / f"{AOI_CITY}_FINLAND_mml_land_parcels.geojson"
     gdf.to_file(out_path, driver="GeoJSON", encoding="utf-8")
 
     print(f"\n  Parcels:  {len(gdf)}")

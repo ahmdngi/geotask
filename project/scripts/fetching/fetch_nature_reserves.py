@@ -100,7 +100,7 @@ def main():
         gdf = gpd.GeoDataFrame.from_features(fc, crs="EPSG:4326")
         gdf = gdf.to_crs(TARGET_CRS)
 
-        out_path = DATA_DIR / f"{AOI_CITY}_FINLAND_nature_reserves_{label}.geojson"
+        out_path = DATA_DIR / f"{AOI_CITY}_FINLAND_syke_nature_reserves_{label}.geojson"
         gdf.to_file(out_path, driver="GeoJSON", encoding="utf-8")
 
         print(f"  Features: {len(gdf)}")

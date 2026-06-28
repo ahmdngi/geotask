@@ -138,7 +138,7 @@ def main():
     r = requests.get(dl_url, auth=(MML_KEY, ""), timeout=600)
     r.raise_for_status()
 
-    out_path = DATA_DIR / f"{AOI_CITY}_FINLAND_dem_2m.tiff"
+    out_path = DATA_DIR / f"{AOI_CITY}_FINLAND_mml_dem_2m.tiff"
     with open(out_path, "wb") as f:
         f.write(r.content)
 
