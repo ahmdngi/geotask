@@ -1,4 +1,7 @@
-"""Fetch land parcels (kiinteistöt) from MML OGC API Features. Output: EPSG:3067 GeoJSON. Filters to >= 10 ha."""
+"""Fetch land parcels (kiinteistöt) from MML OGC API Features. Output: EPSG:4326 GeoJSON. Filters to >= 10 ha.
+
+Area filtering uses explicit reprojection to EPSG:3067 so it works regardless
+of whether the MML API honours the crs parameter (sometimes it returns WGS84)."""
 
 import json
 import sys
@@ -6,6 +9,7 @@ import time
 from pathlib import Path
 
 import requests
+from pyproj import Transformer
 from shapely.geometry import shape
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
@@ -15,23 +19,34 @@ from config.config import AOI_BBOX_WGS84, AOI_CITY, MML_KEY, MML_PARCELS
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
 PAGE_LIMIT = 1000
+MIN_AREA_HA = 10
 
 COLLECTION = "PalstanSijaintitiedot"
+
+_PROJ_TO_3067 = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True).transform
 
 
 def wgs84_to_3067_bbox_str(wgs84_bbox: list[float]) -> str:
     """Convert [min_lat, min_lon, max_lat, max_lon] to EPSG:3067 bbox coords."""
-    from pyproj import Transformer
     transformer = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True)
     minx, miny = transformer.transform(wgs84_bbox[1], wgs84_bbox[0])
     maxx, maxy = transformer.transform(wgs84_bbox[3], wgs84_bbox[2])
     return f"{minx:.1f},{miny:.1f},{maxx:.1f},{maxy:.1f}"
 
 
+def area_ha_in_3067(geom) -> float:
+    """Reproject geometry to EPSG:3067 (metres) and return area in hectares."""
+    from shapely.ops import transform
+    g_proj = transform(_PROJ_TO_3067, geom)
+    return g_proj.area / 10000
+
+
 def fetch_large_parcels(bbox_3067: str) -> list[dict]:
-    """Paginate MML parcels, keep only >= 10 ha on-the-fly."""
+    """Paginate MML parcels, keep only >= MIN_AREA_HA on-the-fly."""
     all_large = []
     seen_ids = set()
+    skipped_null_geom = 0
+    skipped_small = 0
     crs_param = "http://www.opengis.net/def/crs/EPSG/0/3067"
 
     url = (
@@ -62,24 +77,27 @@ def fetch_large_parcels(bbox_3067: str) -> list[dict]:
         for f in features:
             g = f.get("geometry")
             if not g or g.get("type") not in ("Polygon", "MultiPolygon"):
+                skipped_null_geom += 1
                 continue
             try:
                 s = shape(g)
-                ha = s.area / 10000
+                ha = area_ha_in_3067(s)
                 pid = f.get("properties", {}).get("kiinteistotunnus", "")
-                if ha >= 10 and pid not in seen_ids:
+                if ha >= MIN_AREA_HA and pid not in seen_ids:
                     seen_ids.add(pid)
                     f["properties"]["area_ha"] = round(ha, 1)
                     all_large.append(f)
                     kept += 1
+                else:
+                    skipped_small += 1
             except Exception:
                 pass
 
         if kept == 0 and page >= 3:
-            print(f"  Page {page}: {len(features)} features, 0 kept — stopping early (no >=10 ha parcels in first 3 pages)")
+            print(f"  Page {page}: {len(features)} feats, 0 kept — stopping (no >=10 ha parcels in first 3 pages)")
             break
 
-        print(f"  Page {page}: {len(features)} features -> {kept} kept (total: {len(all_large)})")
+        print(f"  Page {page}: {len(features)} feats -> {kept} kept (total: {len(all_large)})")
 
         url = None
         for link in data.get("links", []):
@@ -88,6 +106,7 @@ def fetch_large_parcels(bbox_3067: str) -> list[dict]:
                 break
         time.sleep(0.3)
 
+    print(f"  Skipped: {skipped_null_geom} null-geom, {skipped_small} < {MIN_AREA_HA} ha")
     return all_large
 
 
