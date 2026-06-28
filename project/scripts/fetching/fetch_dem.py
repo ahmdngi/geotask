@@ -122,15 +122,15 @@ def main():
         timeout=30,
     ).json()
 
-    # Find the href — structure: {"output1": {"href": "...", "type": "..."}, ...}
+    # Find the download URL — structure: {"results": [{"path": "...", ...}, ...]}
     dl_url = None
-    for v in results.values():
-        if isinstance(v, dict) and v.get("href"):
-            dl_url = v["href"]
+    for entry in results.get("results", []):
+        if isinstance(entry, dict) and entry.get("path"):
+            dl_url = entry["path"]
             break
 
     if not dl_url:
-        print(f"  ERROR: No download URL in results: {json.dumps(results, indent=2)[:300]}")
+        print(f"  ERROR: No download URL in results: {json.dumps(results, indent=2)[:500]}")
         sys.exit(1)
 
     # Step 4: Download
