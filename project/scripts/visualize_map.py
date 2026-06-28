@@ -54,39 +54,13 @@ def main():
                       strokeColor="#3498db", strokeWidth=2, strokeDash="5,5",
                       fillColor="#3498db", fillOpacity=0.03, popup=["city", "buffer_km"])
 
-    # ── Gradient <8% suitable area (polygonized from binary mask) ──
-    mask_tif = SUIT_DIR / f"{prefix}_gradient_suitable_8pct.tiff"
-    if mask_tif.exists():
-        import rasterio
-        from rasterio.features import shapes
-        import numpy as np
-        from shapely.geometry import shape, mapping
-        from shapely.ops import transform
-        import pyproj
-        with rasterio.open(mask_tif) as src:
-            # Downsample 8× for speed (still ~740×740 at Helsinki scale)
-            mask = src.read(1, out_shape=(1, src.height // 8, src.width // 8))
-            transform_lo = src.transform * src.transform.scale(
-                src.width / mask.shape[1], src.height / mask.shape[0]
-            )
-            results = (
-                {"type": "Feature", "geometry": mapping(shape(geom)), "properties": {}}
-                for geom, val in shapes(mask, mask=mask, transform=transform_lo)
-                if val == 1
-            )
-            feats = list(results)
-            if feats:
-                from shapely.ops import unary_union, transform
-                import pyproj
-                merged = unary_union([shape(f["geometry"]) for f in feats]).simplify(10)
-                proj = pyproj.Transformer.from_crs("EPSG:3067", "EPSG:4326", always_xy=True).transform
-                merged_wgs84 = transform(proj, merged)
-                suitable_fc = {"type": "FeatureCollection",
-                               "features": [{"type": "Feature", "geometry": mapping(merged_wgs84),
-                                              "properties": {}}]}
-                m.add_geojson(suitable_fc, name="Gradient <8%",
-                              strokeColor="#90ee90", strokeWidth=0.5,
-                              fillColor="#90ee90", fillOpacity=0.4)
+    # ── Gradient <8% suitable area (pre-vectorized GeoJSON from process_dem_tiles) ──
+    gradient_geojson = SUIT_DIR / f"{prefix}_gradient_suitable_8pct.geojson"
+    gradient = load(gradient_geojson, "Gradient <8%")
+    if gradient["features"]:
+        m.add_geojson(gradient, name="Gradient <8%",
+                      strokeColor="#90ee90", strokeWidth=0.5,
+                      fillColor="#90ee90", fillOpacity=0.4)
 
     if parcels["features"]:
         m.add_geojson(parcels, name="Land parcels",
