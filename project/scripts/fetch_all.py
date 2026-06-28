@@ -65,6 +65,8 @@ def main():
     print(f"  {total:.0f}s total")
     print(f"{'='*50}")
 
+    sys.exit(0 if ok == len(results) else 1)
+
 
 if __name__ == "__main__":
     main()
