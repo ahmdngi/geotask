@@ -26,7 +26,12 @@ SKIP_FILES = {"finland_boundary.geojson"}
 
 def load_boundary() -> gpd.GeoDataFrame | None:
     p = ETL_DIR / "finland_boundary.geojson"
-    return gpd.read_file(p) if p.exists() else None
+    if not p.exists():
+        return None
+    b = gpd.read_file(p)
+    if b.crs is None or b.crs.to_string() != TARGET_CRS:
+        b = b.to_crs(TARGET_CRS)
+    return b
 
 
 def clean(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
