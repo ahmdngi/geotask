@@ -1,13 +1,4 @@
-"""
-Fetch data center locations from Data Center Map (Finland).
-
-Source: datacentermap.com (scraped via Playwright for JS-rendered content)
-Native CRS: WGS84 (EPSG:4326)
-Output: data/raw/{CITY}_FINLAND_datacentermap.geojson (EPSG:3067)
-
-Uses Playwright to bypass the Vercel JS challenge.
-Data comes from Next.js page props as embedded GeoJSON.
-"""
+"""Fetch data center locations from Data Center Map (Finland). Output: EPSG:3067 GeoJSON. Uses Playwright for JS-rendered content."""
 
 import json
 import sys
@@ -17,11 +8,10 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from config.config import AOI_BBOX_WGS84, AOI_CITY
+from config.config import AOI_BBOX_WGS84, AOI_CITY, DATACENTERMAP
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
 TARGET_CRS = "EPSG:3067"
-BASE_URL = "https://www.datacentermap.com"
 
 
 def extract_nextjs_props(page) -> dict | None:
@@ -68,10 +58,9 @@ def main():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
 
-        # Step 1: Get all Finnish cities from country page
         print("\nStep 1: Fetching city list...")
         try:
-            page.goto(f"{BASE_URL}/finland/", timeout=30000)
+            page.goto(f"{DATACENTERMAP}/finland/", timeout=30000)
             page.wait_for_timeout(5000)
         except Exception as e:
             print(f"  ERROR loading Finland page: {e}")
@@ -87,7 +76,6 @@ def main():
         all_cities = props.get("mapdata", {}).get("geos", [])
         print(f"  Finland has {len(all_cities)} cities with DCs")
 
-        # Filter cities by AOI
         target_cities = []
         for c in all_cities:
             coords = c.get("geometry", {}).get("coordinates", [])
@@ -98,9 +86,8 @@ def main():
         print(f"  {len(target_cities)} cities intersect AOI")
         if not target_cities:
             print("  No cities within AOI — trying cities near AOI boundary anyway")
-            target_cities = all_cities[:3]  # fallback: try a few nearby
+            target_cities = all_cities[:3]
 
-        # Step 2: Visit each city that intersects AOI
         print(f"\nStep 2: Scraping data centers...")
         all_dcs = []
 
@@ -116,7 +103,7 @@ def main():
             print(f"  {city_name} ({dc_count} DCs)...", end=" ", flush=True)
 
             try:
-                page.goto(f"{BASE_URL}/finland/{city_slug}/", timeout=20000)
+                page.goto(f"{DATACENTERMAP}/finland/{city_slug}/", timeout=20000)
                 page.wait_for_timeout(3000)
             except Exception as e:
                 print(f"SKIP (timeout)")
@@ -130,14 +117,12 @@ def main():
             dcs = city_props.get("mapdata", {}).get("dcs", [])
             stats = city_props.get("geodata", {}).get("meta_stats", {}).get("dcs", {})
 
-            # Enrich each DC with city and market stats
             for dc in dcs:
                 dc["properties"]["city"] = city_name
                 dc["properties"]["city_slug"] = city_slug
                 for k, v in stats.items():
                     dc["properties"][f"market_{k}"] = v
 
-            # Filter to AOI
             before = len(dcs)
             dcs_filtered = [dc for dc in dcs if point_in_bbox(
                 dc["geometry"]["coordinates"][0],
@@ -149,7 +134,6 @@ def main():
 
         browser.close()
 
-    # Step 3: Save
     print(f"\nStep 3: Saving...")
     if not all_dcs:
         print("  No data centers found within AOI — skipping save.")

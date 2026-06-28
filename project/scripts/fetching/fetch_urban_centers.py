@@ -1,33 +1,27 @@
-"""
-Fetch urban centers (cities/towns with population >= 100k) from OSM.
-
-Source: Overpass API
-Native CRS: WGS84 (EPSG:4326)
-Output: data/raw/{CITY}_FINLAND_urban_centers.geojson (EPSG:3067)
-"""
+"""Fetch urban centers (pop >= 100k) from OSM. Output: EPSG:3067 GeoJSON."""
 
 import json
-import os
 import sys
 import time
 from pathlib import Path
 
 import geopandas as gpd
 import requests
-import sys
+
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from config.config import AOI_BBOX_WGS84, AOI_CITY
+from config.config import AOI_BBOX_WGS84, AOI_CITY, OVERPAST_URL
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
-UA = "KRIOS-GIS/1.0 (assignment)"
+UA = "GIS-Script/1.0"
 OSM_BBOX = ",".join(str(v) for v in AOI_BBOX_WGS84)
 TARGET_CRS = "EPSG:3067"
 
 
 def overpass_query(query: str) -> dict:
-    url = "https://overpass-api.de/api/interpreter"
+    """Run Overpass query with 429 retry, return parsed JSON."""
+    url = OVERPAST_URL
     max_retries = 3
     for attempt in range(max_retries + 1):
         r = requests.post(
@@ -43,7 +37,7 @@ def overpass_query(query: str) -> dict:
             continue
         r.raise_for_status()
         return r.json()
-    return {}  # unreachable, keeps linter happy
+    return {}
 
 
 def main():

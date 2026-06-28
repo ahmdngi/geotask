@@ -2,8 +2,8 @@
 Orchestrator — run all ETL steps in order.
 
 Usage:
-  python scripts/etl/run_etl.py              # run all steps
-  python scripts/etl/run_etl.py --skip qc    # skip specific steps
+  python scripts/run_etl.py              # run all steps
+  python scripts/run_etl.py --skip qc    # skip specific steps
 """
 
 import subprocess
@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-ETL_DIR = Path(__file__).resolve().parent
+ETL_DIR = Path(__file__).resolve().parent / "etl"
 ROOT = ETL_DIR.parent
 
 STEPS = [

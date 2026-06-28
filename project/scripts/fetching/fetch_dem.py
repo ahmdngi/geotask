@@ -1,34 +1,23 @@
-"""
-Fetch Digital Elevation Model (2m resolution) from MML OGC API Processes.
-
-Source: MML OGC API Processes (requires MML_KEY in config/keys.json)
-Native CRS: EPSG:3067 (metric, Finnish standard)
-Output: data/raw/{CITY}_FINLAND_dem_2m.tiff (EPSG:3067)
-
-Note: MML caps each job at 100 km². The script auto-clips to the AOI
-      center within this limit. Set MML_KEY in config/keys.json.
-"""
+"""Fetch Digital Elevation Model (2m) from MML OGC API Processes. Output: EPSG:3067 TIFF."""
 
 import json
-import os
 import sys
 import time
 from pathlib import Path
 
 import requests
-import sys
+
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from config.config import AOI_BBOX_WGS84, AOI_CITY, MML_KEY
+from config.config import AOI_BBOX_WGS84, AOI_CITY, MML_KEY, MML_DEM_PROC
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
 TARGET_CRS = "EPSG:3067"
-MAX_AREA_KM2 = 90  # MML limit is 100 km², leave margin
-POLL_INTERVAL = 5  # seconds between job status polls
-POLL_MAX = 60  # max poll iterations (5 min total)
+MAX_AREA_KM2 = 90
+POLL_INTERVAL = 5
+POLL_MAX = 60
 
-PROC_URL = "https://avoin-paikkatieto.maanmittauslaitos.fi/tiedostopalvelu/ogcproc/v1"
 PROCESS_ID = "korkeusmalli_2m_bbox"
 
 
@@ -71,7 +60,6 @@ def main():
     print(f"DEM area: {area_km2:.1f} km² (centered on AOI centroid)")
     print(f"  Bbox:   {bbox_3067}")
 
-    # Step 1: Submit async job
     body = json.dumps({
         "id": PROCESS_ID,
         "inputs": {
@@ -80,7 +68,7 @@ def main():
         },
     })
 
-    url = f"{PROC_URL}/processes/{PROCESS_ID}/execution"
+    url = f"{MML_DEM_PROC}/processes/{PROCESS_ID}/execution"
     print("Submitting DEM extraction job...")
     resp = requests.post(
         url,
@@ -99,8 +87,7 @@ def main():
     job_id = resp.json()["jobID"]
     print(f"  Job ID: {job_id}")
 
-    # Step 2: Poll until successful
-    status_url = f"{PROC_URL}/jobs/{job_id}"
+    status_url = f"{MML_DEM_PROC}/jobs/{job_id}"
     for i in range(POLL_MAX):
         time.sleep(POLL_INTERVAL)
         status = requests.get(status_url, auth=(MML_KEY, ""), timeout=30).json()
@@ -115,14 +102,12 @@ def main():
         print("  ERROR: Job did not complete within timeout.")
         sys.exit(1)
 
-    # Step 3: Get download URL from results
     results = requests.get(
-        f"{PROC_URL}/jobs/{job_id}/results",
+        f"{MML_DEM_PROC}/jobs/{job_id}/results",
         auth=(MML_KEY, ""),
         timeout=30,
     ).json()
 
-    # Find the download URL — structure: {"results": [{"path": "...", ...}, ...]}
     dl_url = None
     for entry in results.get("results", []):
         if isinstance(entry, dict) and entry.get("path"):
@@ -133,8 +118,7 @@ def main():
         print(f"  ERROR: No download URL in results: {json.dumps(results, indent=2)[:500]}")
         sys.exit(1)
 
-    # Step 4: Download
-    print(f"Downloading DEM...")
+    print("Downloading DEM...")
     r = requests.get(dl_url, auth=(MML_KEY, ""), timeout=600)
     r.raise_for_status()
 

@@ -1,10 +1,4 @@
-"""
-Fetch Fingrid grid substation connection capacity.
-
-Source: ArcGIS FeatureServer (no auth)
-Native CRS: EPSG:3067 → already in finnish standard
-Output: data/raw/{CITY}_FINLAND_fingrid_substations.geojson (EPSG:3067)
-"""
+"""Fetch Fingrid grid substation connection capacity. Output: EPSG:3067 GeoJSON."""
 
 import json
 import sys
@@ -14,18 +8,14 @@ from typing import Any
 
 import geopandas as gpd
 import requests
-import sys
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from config.config import AOI_BBOX_WGS84, AOI_CITY
+from config.config import AOI_BBOX_WGS84, AOI_CITY, FINGRID_BASE
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
-LAYER_URL = (
-    "https://services2.arcgis.com/uh3cDCipmuPcmxmx/ArcGIS/rest/services"
-    "/Kytkinlaitokset_Fingrid/FeatureServer/0"
-)
+LAYER_URL = f"{FINGRID_BASE}/Kytkinlaitokset_Fingrid/FeatureServer/0"
 
 
 def fetch_all_features(url: str, out_fields: str = "*", out_sr: int = 3067) -> list[dict[str, Any]]:
@@ -75,7 +65,6 @@ def main():
         print("No features found in AOI.")
         sys.exit(0)
 
-    # Save raw ArcGIS JSON → read with geopandas (handles ArcGIS format)
     tmp = DATA_DIR / "_fingrid_raw.json"
     with open(tmp, "w") as f:
         json.dump({"features": features}, f)

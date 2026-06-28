@@ -1,10 +1,5 @@
 """
-QC Report — validate all raw and ETL data layers.
-
-Checks: CRS, geometry validity, nulls, feature count, spatial extent,
-        duplicate IDs, topology overlaps.
-
-Output: data/etl/{CITY}_FINLAND_qc_report.txt
+QC Report — validate CRS, geometry, feature counts for all data layers.
 """
 
 import sys
@@ -23,133 +18,73 @@ EXCL_DIR = ROOT / "data" / "etl" / "exclusions"
 SUIT_DIR = ROOT / "data" / "etl" / "suitability"
 ETL_DIR = ROOT / "data" / "etl"
 TARGET_CRS = "EPSG:3067"
-
-REPORT_HEADER = f"""
-{'=' * 70}
+HEADER = f"""
+{'='*70}
 QC REPORT — {AOI_CITY}
-{'=' * 70}
-AOI bbox (WGS84): {AOI_BBOX_WGS84}
-Generated:         {__import__('datetime').datetime.now().isoformat()}
+{'='*70}
+AOI bbox: {AOI_BBOX_WGS84}
 """
 
 
-def check_layer(path: Path, label: str) -> list[str]:
-    """Run all QC checks on a single layer. Return list of issues."""
+def check(path: Path, label: str) -> list[str]:
     issues = []
     try:
         gdf = gpd.read_file(path)
     except Exception as e:
-        return [f"  ERROR: Cannot read — {e}"]
-
+        return [f"  ERROR: {e}"]
     count = len(gdf)
     issues.append(f"  Features: {count:,}")
-
     if count == 0:
-        issues.append(f"  ⚠️  EMPTY LAYER")
+        issues.append("  ⚠️  EMPTY")
         return issues
 
-    # CRS — GeoJSON should be WGS84 per spec, TIFF should be 3067
     crs = gdf.crs
-    expected_crs = "EPSG:4326" if path.suffix == ".geojson" else TARGET_CRS
+    expected = "EPSG:4326" if path.suffix == ".geojson" else TARGET_CRS
     if crs is None:
-        issues.append(f"  ❌ CRS: None")
+        issues.append("  ❌ CRS: None")
     else:
-        crs_str = crs.to_string()
-        if crs_str == expected_crs:
-            issues.append(f"  ✅ CRS: {crs_str}")
-        else:
-            issues.append(f"  ❌ CRS: {crs_str} (expected {expected_crs})")
+        s = crs.to_string()
+        issues.append(f"  {'✅' if s == expected else '❌'} CRS: {s}")
 
-    # Geometry type
-    geom_types = gdf.geometry.geom_type.value_counts().to_dict()
-    issues.append(f"  Geom: {dict(geom_types)}")
+    issues.append(f"  Geom: {dict(gdf.geometry.geom_type.value_counts())}")
 
-    # Null geometries
-    null_geom = gdf.geometry.isna().sum()
-    if null_geom > 0:
-        issues.append(f"  ❌ Null geometries: {null_geom}")
-
-    # Geometry validity
+    nulls = gdf.geometry.isna().sum()
+    if nulls:
+        issues.append(f"  ❌ Null geom: {nulls}")
     invalid = (~gdf.geometry.is_valid).sum()
-    if invalid > 0:
-        pct = invalid / count * 100
-        issues.append(f"  ⚠️  Invalid geometries: {invalid} ({pct:.1f}%)")
+    if invalid:
+        issues.append(f"  ⚠️  Invalid: {invalid}/{count}")
 
-    # Null attributes
     for col in gdf.columns:
         if col == "geometry":
             continue
-        nulls = gdf[col].isna().sum()
-        if nulls > 0:
-            pct = nulls / count * 100
-            if pct > 50:
-                issues.append(f"  ⚠️  {col}: {nulls}/{count} null ({pct:.0f}%)")
-
-    # Spatial extent
-    try:
-        bounds = gdf.total_bounds  # [minx, miny, maxx, maxy]
-        area_km2 = (bounds[2] - bounds[0]) * (bounds[3] - bounds[1]) / 1e6
-        issues.append(f"  Extent: {area_km2:.0f} km² ({bounds[0]:.0f}, {bounds[1]:.0f}) to ({bounds[2]:.0f}, {bounds[3]:.0f})")
-    except Exception:
-        pass
-
-    # Duplicate IDs (if 'id' column exists)
-    if "id" in gdf.columns:
-        dupes = gdf["id"].duplicated().sum()
-        if dupes > 0:
-            issues.append(f"  ⚠️  Duplicate IDs: {dupes}")
+        n = gdf[col].isna().sum()
+        if n > 0 and n / count > 0.5:
+            issues.append(f"  ⚠️  {col}: {n}/{count} null ({n*100//count}%)")
 
     return issues
 
 
 def main():
-    report_lines = [REPORT_HEADER]
-
-    # Scan all directories
-    dirs_to_check = [
-        ("Raw data", RAW_DIR),
-        ("Clipped data", CLIP_DIR),
-        ("Exclusion zones", EXCL_DIR),
-        ("Suitability", SUIT_DIR),
-    ]
-
-    for dir_label, directory in dirs_to_check:
-        if not directory.exists():
+    lines = [HEADER]
+    for label, d in [("Raw", RAW_DIR), ("Clipped", CLIP_DIR), ("Exclusions", EXCL_DIR), ("Suitability", SUIT_DIR)]:
+        if not d.exists():
             continue
-        files = sorted(directory.glob("*"))
+        files = sorted(d.glob("*.geojson"))
         if not files:
             continue
-        report_lines.append(f"\n{'─' * 70}")
-        report_lines.append(f"{dir_label} ({directory.relative_to(ROOT)})")
-        report_lines.append(f"{'─' * 70}")
+        lines.append(f"\n{'─'*70}\n{label} ({d.relative_to(ROOT)})\n{'─'*70}")
+        for f in files:
+            lines.append(f"\n📄 {f.name}")
+            lines.extend(check(f, f.stem))
 
-        for fpath in files:
-            if fpath.suffix != ".geojson":
-                continue
-            report_lines.append(f"\n📄 {fpath.name}")
-            try:
-                issues = check_layer(fpath, fpath.stem)
-                report_lines.extend(issues)
-            except Exception as e:
-                report_lines.append(f"  ❌ ERROR: {e}")
+    total = sum(1 for _, d in [("", RAW_DIR), ("", CLIP_DIR), ("", EXCL_DIR), ("", SUIT_DIR)] if d.exists() for f in d.glob("*.geojson"))
+    lines.append(f"\n{'─'*70}\nTotal: {total} layers")
 
-    # Summary counts
-    report_lines.append(f"\n{'─' * 70}")
-    total_files = 0
-    for _, d in dirs_to_check:
-        if d.exists():
-            total_files += len([f for f in d.glob("*") if f.suffix in (".geojson", ".tiff")])
-    report_lines.append(f"\nTotal layers checked: {total_files}")
-
-    report = "\n".join(report_lines)
+    report = "\n".join(lines)
     print(report)
-
-    # Save report
     ETL_DIR.mkdir(parents=True, exist_ok=True)
-    report_path = ETL_DIR / f"{AOI_CITY}_FINLAND_qc_report.txt"
-    with open(report_path, "w", encoding="utf-8") as f:
-        f.write(report)
-    print(f"\nReport saved: {report_path}")
+    (ETL_DIR / f"{AOI_CITY}_FINLAND_qc_report.txt").write_text(report, encoding="utf-8")
 
 
 if __name__ == "__main__":

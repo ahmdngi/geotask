@@ -1,15 +1,6 @@
-"""
-Fetch land parcels (kiinteistöt) from MML OGC API Features — fast, filtered on-the-fly.
-
-Source: MML OGC API Features (requires MML_KEY in config/keys.json)
-Native CRS: WGS84 by default, request EPSG:3067 for metric geometry
-Output: data/raw/{CITY}_FINLAND_mml_land_parcels.geojson (EPSG:3067)
-
-Filters to >= 10 ha using the API's Area_ha field during pagination.
-"""
+"""Fetch land parcels (kiinteistöt) from MML OGC API Features. Output: EPSG:3067 GeoJSON. Filters to >= 10 ha."""
 
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -20,12 +11,11 @@ from shapely.geometry import shape
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from config.config import AOI_BBOX_WGS84, AOI_CITY, MML_KEY
+from config.config import AOI_BBOX_WGS84, AOI_CITY, MML_KEY, MML_PARCELS
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
 PAGE_LIMIT = 1000
 
-BASE_URL = "https://avoin-paikkatieto.maanmittauslaitos.fi/kiinteisto-avoin/simple-features/v3"
 COLLECTION = "PalstanSijaintitiedot"
 
 
@@ -45,7 +35,7 @@ def fetch_large_parcels(bbox_3067: str) -> list[dict]:
     crs_param = "http://www.opengis.net/def/crs/EPSG/0/3067"
 
     url = (
-        f"{BASE_URL}/collections/{COLLECTION}/items"
+        f"{MML_PARCELS}/collections/{COLLECTION}/items"
         f"?bbox={bbox_3067}"
         f"&bbox-crs={crs_param}"
         f"&crs={crs_param}"
@@ -75,7 +65,7 @@ def fetch_large_parcels(bbox_3067: str) -> list[dict]:
                 continue
             try:
                 s = shape(g)
-                ha = s.area / 10000  # EPSG:3067 → m² → ha
+                ha = s.area / 10000
                 pid = f.get("properties", {}).get("kiinteistotunnus", "")
                 if ha >= 10 and pid not in seen_ids:
                     seen_ids.add(pid)
@@ -91,7 +81,6 @@ def fetch_large_parcels(bbox_3067: str) -> list[dict]:
 
         print(f"  Page {page}: {len(features)} features -> {kept} kept (total: {len(all_large)})")
 
-        # Follow next link
         url = None
         for link in data.get("links", []):
             if link.get("rel") == "next":

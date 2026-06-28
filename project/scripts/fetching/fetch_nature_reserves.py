@@ -1,20 +1,5 @@
-"""
-Fetch nature reserves and protected areas from SYKE WFS.
+"""Fetch nature reserves and protected areas from SYKE WFS. Output: EPSG:3067 GeoJSON."""
 
-Layers:
-  - State-owned nature reserves
-  - Private nature reserves
-  - Birds Directive SPA
-  - Habitats Directive SAC
-
-Native CRS: WGS84 (EPSG:4326), filtered via EPSG:3067 bbox
-Output: data/raw/{CITY}_FINLAND_nature_reserves_*.geojson (EPSG:3067)
-
-Note: No filtering. Returns all protected areas intersecting AOI bbox.
-"""
-
-import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -22,11 +7,11 @@ from pathlib import Path
 import geopandas as gpd
 import requests
 from pyproj import Transformer
-import sys
+
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from config.config import AOI_BBOX_WGS84, AOI_CITY
+from config.config import AOI_BBOX_WGS84, AOI_CITY, SYKE_WFS
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
 TARGET_CRS = "EPSG:3067"
@@ -49,7 +34,7 @@ def wgs84_to_3067_bbox(wgs84_bbox: list[float]) -> str:
 
 def fetch_syke_wfs(type_name: str, bbox_3067: str) -> list[dict]:
     ws = type_name.split(":")[0]
-    url = f"https://paikkatiedot.ymparisto.fi/geoserver/{ws}/wfs"
+    url = f"{SYKE_WFS}/{ws}/wfs"
     all_features = []
     start_idx = 0
 

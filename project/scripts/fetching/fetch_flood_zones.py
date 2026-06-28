@@ -1,38 +1,21 @@
-"""
-Fetch flood hazard zones from SYKE WFS.
+"""Fetch flood hazard zones from SYKE WFS (river + sea, multiple return periods). Output: EPSG:3067 GeoJSON."""
 
-Sources:
-  - River flood:  NZ.Tulvavaaravyohykkeet_Vesistotulva_1_100a
-  - River flood:  NZ.Tulvavaaravyohykkeet_Vesistotulva_1_250a
-  - Sea flood:    NZ.Tulvavaaravyohykkeet_Meritulva_1_100a
-  - Sea flood:    NZ.Tulvavaaravyohykkeet_Meritulva_1_50a
-
-Native CRS: WGS84 (EPSG:4326), filtered via EPSG:3067 bbox
-Output: data/raw/{CITY}_FINLAND_flood_*.geojson (EPSG:3067)
-
-Note: No filtering — returns all flood zones intersecting AOI bbox.
-      Capped at 5000 features per layer to avoid unbounded pagination.
-"""
-
-import json
-import os
 import sys
 import time
 from pathlib import Path
 
 import geopandas as gpd
-import pandas as pd
 import requests
 from pyproj import Transformer
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from config.config import AOI_BBOX_WGS84, AOI_CITY
+from config.config import AOI_BBOX_WGS84, AOI_CITY, SYKE_WFS
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
 TARGET_CRS = "EPSG:3067"
-MAX_FEATS = 5000  # cap per layer — flood layers can have 100K+ features
+MAX_FEATS = 5000
 
 FLOOD_LAYERS = {
     "river_100a": "inspire_nz:NZ.Tulvavaaravyohykkeet_Vesistotulva_1_100a",
@@ -51,13 +34,9 @@ def wgs84_to_3067_bbox(wgs84_bbox: list[float]) -> str:
 
 
 def fetch_syke_wfs(type_name: str, bbox_3067: str) -> list[dict]:
-    """Fetch features from SYKE WFS with pagination, capped at MAX_FEATS.
-
-    Uses bbox in EPSG:3067 for spatial filtering. Adds outputFormat=application/json
-    and srsName=EPSG:4326 so geometry comes back in WGS84 (valid GeoJSON).
-    """
+    """Fetch features from SYKE WFS with pagination, capped at MAX_FEATS."""
     ws = type_name.split(":")[0]
-    url = f"https://paikkatiedot.ymparisto.fi/geoserver/{ws}/wfs"
+    url = f"{SYKE_WFS}/{ws}/wfs"
     all_features = []
     start_idx = 0
 

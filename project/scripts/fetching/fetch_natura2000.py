@@ -1,17 +1,4 @@
-"""
-Fetch Natura 2000 protected sites from EEA ArcGIS REST — all 3 layers combined.
-
-Layers:
-  - Layer 0: Habitats Directive Sites (pSCI, SCI or SAC)
-  - Layer 1: Birds Directive Sites (SPA)
-  - Layer 2: Habitats and Birds Directive Sites (combined)
-
-Source: EEA ArcGIS REST (no auth)
-Native CRS: WGS84 (EPSG:4326)
-Output: data/raw/{CITY}_FINLAND_natura2000.geojson (EPSG:3067)
-
-Note: No filtering — returns all sites intersecting the AOI bbox.
-"""
+"""Fetch Natura 2000 protected sites from EEA ArcGIS REST (all 3 layers). Output: EPSG:3067 GeoJSON."""
 
 import json
 import sys
@@ -19,21 +6,17 @@ import time
 from pathlib import Path
 
 import geopandas as gpd
-import pandas as pd
 import requests
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from config.config import AOI_BBOX_WGS84, AOI_CITY
+from config.config import AOI_BBOX_WGS84, AOI_CITY, EEA_NATURA
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
 TARGET_CRS = "EPSG:3067"
 
-BASE_URL = (
-    "https://bio.discomap.eea.europa.eu/arcgis/rest/services"
-    "/ProtectedSites/Natura2000Sites/MapServer"
-)
+BASE_URL = EEA_NATURA.rsplit("/", 1)[0]
 
 LAYERS = {
     0: "Habitats Directive",
@@ -74,7 +57,6 @@ def fetch_natura_layer(layer_id: int, bbox_wgs84: list[float]) -> list[dict]:
         features = resp.json().get("features", [])
         if not features:
             break
-        # Tag each feature with its source layer
         for feat in features:
             feat["properties"]["natura_layer"] = LAYERS.get(layer_id, str(layer_id))
         all_features.extend(features)

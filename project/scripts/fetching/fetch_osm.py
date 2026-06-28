@@ -1,30 +1,22 @@
-"""
-Fetch OSM infrastructure data (power lines, substations, power plants).
-
-Source: Overpass API (no auth, requires User-Agent)
-Native CRS: WGS84 (EPSG:4326)
-Output: data/raw/{CITY}_FINLAND_osm_*.geojson (EPSG:3067)
-"""
+"""Fetch OSM infrastructure data (power lines, substations, power plants). Output: EPSG:3067 GeoJSON."""
 
 import json
-import os
 import sys
 import time
 from pathlib import Path
 
 import geopandas as gpd
-import pandas as pd
 import requests
 from shapely.geometry import shape
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from config.config import AOI_BBOX_WGS84, AOI_CITY
+from config.config import AOI_BBOX_WGS84, AOI_CITY, OVERPAST_URL
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
-UA = "KRIOS-GIS/1.0 (assignment)"
-OSM_BBOX = ",".join(str(v) for v in AOI_BBOX_WGS84)  # min_lat,min_lon,max_lat,max_lon
+UA = "GIS-Script/1.0"
+OSM_BBOX = ",".join(str(v) for v in AOI_BBOX_WGS84)
 
 TARGET_CRS = "EPSG:3067"
 
@@ -37,7 +29,7 @@ LAYERS = {
 
 def overpass_query(query: str) -> dict:
     """Run Overpass query with 429 retry, return parsed JSON."""
-    url = "https://overpass-api.de/api/interpreter"
+    url = OVERPAST_URL
     max_retries = 3
     for attempt in range(max_retries + 1):
         r = requests.post(
@@ -107,7 +99,6 @@ def save_geojson(features: list[dict], label: str):
 def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Combined Overpass query – one call for all layers
     q = (
         f'[out:json][timeout:90][bbox:{OSM_BBOX}];'
         '('
@@ -127,7 +118,6 @@ def main():
     elements = data.get("elements", [])
     print(f"  Raw elements: {len(elements)}")
 
-    # Convert elements → features
     all_features = {}
     for el in elements:
         feat = element_to_feature(el)
@@ -136,7 +126,6 @@ def main():
         for label in classify_element(el):
             all_features.setdefault(label, []).append(feat)
 
-    # Save each layer
     for label in ["power_lines", "substations", "power_plants"]:
         save_geojson(all_features.get(label, []), label)
 
