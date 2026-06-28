@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 import requests
+from shapely.geometry import shape
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
@@ -52,7 +53,6 @@ def fetch_large_parcels(bbox_3067: str) -> list[dict]:
     )
 
     page = 0
-    area_field = "Area_ha"  # default, overridden on page 1
     while url:
         page += 1
         resp = requests.get(url, auth=(MML_KEY or "", ""), timeout=120)
@@ -68,37 +68,22 @@ def fetch_large_parcels(bbox_3067: str) -> list[dict]:
         if not features:
             break
 
-        # On page 1, sniff the actual field name for area
-        if page == 1 and features:
-            sample = features[0].get("properties", {})
-            # Try common field names
-            area_keys = ["Area_ha", "area_ha", "PintaAla", "pintaala", "pinta_ala", "area", "hehtaari"]
-            found_key = None
-            for k in area_keys:
-                if k in sample and sample[k] is not None:
-                    found_key = k
-                    break
-            if found_key is None:
-                available = list(sample.keys())[:15]
-                print(f"  ERROR: No area field found in API response. Available fields: {available}")
-                print(f"  First feature sample: {sample}")
-                sys.exit(1)
-            print(f"  Using area field: '{found_key}'")
-            area_field = found_key
-
         kept = 0
         for f in features:
-            props = f.get("properties", {})
-            ha = props.get(area_field)
-            if ha is None:
+            g = f.get("geometry")
+            if not g or g.get("type") not in ("Polygon", "MultiPolygon"):
                 continue
-            ha = float(ha)
-            pid = props.get("kiinteistotunnus", "")
-            if ha >= 10 and pid not in seen_ids:
-                seen_ids.add(pid)
-                props["area_ha"] = round(ha, 1)
-                all_large.append(f)
-                kept += 1
+            try:
+                s = shape(g)
+                ha = s.area / 10000  # EPSG:3067 → m² → ha
+                pid = f.get("properties", {}).get("kiinteistotunnus", "")
+                if ha >= 10 and pid not in seen_ids:
+                    seen_ids.add(pid)
+                    f["properties"]["area_ha"] = round(ha, 1)
+                    all_large.append(f)
+                    kept += 1
+            except Exception:
+                pass
 
         if kept == 0 and page >= 3:
             print(f"  Page {page}: {len(features)} features, 0 kept — stopping early (no >=10 ha parcels in first 3 pages)")
