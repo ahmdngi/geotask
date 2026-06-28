@@ -26,11 +26,11 @@ def run(name: str) -> dict:
         return {"name": name, "status": "SKIP"}
     t0 = time.time()
     try:
-        r = subprocess.run([sys.executable, str(sp)], capture_output=True, text=True, timeout=600)
+        r = subprocess.run([sys.executable, str(sp)], timeout=1800)
         elapsed = time.time() - t0
         if r.returncode == 0:
-            return {"name": name, "status": "OK", "output": r.stdout, "time": elapsed}
-        return {"name": name, "status": "FAIL", "error": r.stderr[:300], "time": elapsed}
+            return {"name": name, "status": "OK", "time": elapsed}
+        return {"name": name, "status": "FAIL", "error": f"exit code {r.returncode}", "time": elapsed}
     except subprocess.TimeoutExpired:
         return {"name": name, "status": "TIMEOUT", "time": time.time() - t0}
 
