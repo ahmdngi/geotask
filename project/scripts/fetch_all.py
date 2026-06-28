@@ -2,9 +2,9 @@
 Run all data-fetching scripts for the selected AOI city.
 
 Usage:
-  python scripts/run_all.py                    # fetch all
-  python scripts/run_all.py --skip dem         # skip DEM
-  python scripts/run_all.py --only fingrid     # specific only
+  python scripts/fetch_all.py                    # fetch all
+  python scripts/fetch_all.py --skip dem         # skip DEM
+  python scripts/fetch_all.py --only fingrid     # specific only
 """
 
 import argparse, os, subprocess, sys, time, json

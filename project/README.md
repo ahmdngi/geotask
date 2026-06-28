@@ -17,7 +17,7 @@ project/
 │   └── etl/               # Processed data (clipped, suitability, exclusions)
 ├── scripts/
 │   ├── city_picker.py     # Interactive server → auto-fetch
-│   ├── run_all.py         # Fetch orchestrator
+│   ├── fetch_all.py         # Fetch orchestrator
 │   ├── run_etl.py         # ETL orchestrator
 │   ├── visualize_map.py   # Interactive map
 │   └── fetching/
@@ -60,7 +60,7 @@ echo '{"MML_KEY": "your-key-here"}' > config/keys.json
 python scripts/city_picker.py
 
 # Or manually:
-python scripts/run_all.py
+python scripts/fetch_all.py
 ```
 
 ### 3. Run ETL
