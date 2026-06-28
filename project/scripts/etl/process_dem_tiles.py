@@ -1,8 +1,10 @@
-"""Process DEM tiles in parallel: gradient → binary mask → polygonize → GeoJSON.
-Reads tiles at 1/8 resolution (fast I/O), generates dissolved suitability GeoJSON.
+"""Process DEM tiles in parallel: gradient → binary mask → polygonize → GeoJSON + mask TIFF.
+Reads tiles at 1/8 resolution (fast I/O), generates dissolved suitability GeoJSON
+and binary suitability mask TIFF (uint8, for future analysis).
 
 Input:  data/raw/dem_tiles/*.tiff (raw 2m DEM tiles from MML)
 Output: data/etl/suitability/{City}_FINLAND_gradient_suitable_8pct.geojson
+        data/etl/suitability/{City}_FINLAND_gradient_suitable_8pct.tiff  (uint8, nodata=0)
 """
 
 import json
@@ -84,7 +86,9 @@ def main():
     from shapely.geometry import shape, mapping
     from shapely.ops import unary_union, transform as shp_transform
     import pyproj
+    from rasterio.merge import merge
     poly_geoms = []
+    mask_entries = []  # (mask_array, transform, crs)
     done = 0
 
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
@@ -94,8 +98,9 @@ def main():
             result = fut.result()
             tile = fut_map[fut].stem
             if result:
-                _, _, _, dissolved = result
+                mask_arr, xf_lo, crs, dissolved = result
                 poly_geoms.append(dissolved)
+                mask_entries.append((mask_arr, xf_lo, crs))
 
                 # Incremental merge every 10 tiles
                 if len(poly_geoms) >= 10:
@@ -125,7 +130,38 @@ def main():
     with open(geojson_path, "w", encoding="utf-8") as f:
         json.dump(fc, f)
     kb = geojson_path.stat().st_size / 1024
-    print(f"  Saved: {geojson_path.name} ({kb:.0f} KB)")
+    print(f"  GeoJSON: {geojson_path.name} ({kb:.0f} KB) — for viewing")
+
+    # ── Save binary mask TIFF (for future decisions) ──
+    print("\nMosaicing binary mask TIFF...")
+    from rasterio.io import MemoryFile
+    srcs = []
+    for arr, xf, crs in mask_entries:
+        prof = {
+            "driver": "GTiff", "height": arr.shape[0], "width": arr.shape[1],
+            "count": 1, "dtype": np.uint8, "crs": crs, "transform": xf,
+            "nodata": 0, "tiled": True, "blockxsize": 256, "blockysize": 256,
+            "compress": "lzw",
+        }
+        mem = MemoryFile()
+        with mem.open(**prof) as tmp:
+            tmp.write(arr, 1)
+        srcs.append(mem.open())
+
+    mosaic, xform = merge(srcs, method="first")
+    mask_tif = SUIT_DIR / f"{AOI_CITY}_FINLAND_gradient_suitable_8pct.tiff"
+    with rasterio.open(mask_tif, "w", driver="GTiff",
+                       height=mosaic.shape[1], width=mosaic.shape[2],
+                       count=1, dtype=np.uint8, crs="EPSG:3067", transform=xform,
+                       nodata=0, tiled=True, blockxsize=256, blockysize=256,
+                       compress="lzw") as dst:
+        dst.write(mosaic)
+
+    for s in srcs:
+        s.close()
+
+    mb = mask_tif.stat().st_size / 1e6
+    print(f"  Mask TIFF: {mask_tif.name} ({mb:.1f} MB) — for analysis")
 
     total = time.time() - t0
     print(f"\nDone in {total:.0f}s")
