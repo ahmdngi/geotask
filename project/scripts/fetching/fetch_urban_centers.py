@@ -85,13 +85,20 @@ def main():
         })
 
     fc = {"type": "FeatureCollection", "features": features}
-    gdf = gpd.GeoDataFrame.from_features(fc, crs="EPSG:4326")
-    gdf = gdf.to_crs(TARGET_CRS)
-
     out_path = DATA_DIR / f"{AOI_CITY}_FINLAND_osm_urban_centers.geojson"
-    gdf.to_file(out_path, driver="GeoJSON", encoding="utf-8")
 
-    names = sorted(gdf["name"].tolist())
+    if not features:
+        print("  No urban centers >= 100k found within AOI.")
+        empty_gdf = gpd.GeoDataFrame({"name": [], "population": []}, geometry=[], crs="EPSG:4326")
+        empty_gdf = empty_gdf.to_crs(TARGET_CRS)
+        empty_gdf.to_file(out_path, driver="GeoJSON", encoding="utf-8")
+        names = []
+        gdf = empty_gdf
+    else:
+        gdf = gpd.GeoDataFrame.from_features(fc, crs="EPSG:4326")
+        gdf = gdf.to_crs(TARGET_CRS)
+        gdf.to_file(out_path, driver="GeoJSON", encoding="utf-8")
+        names = sorted(gdf["name"].tolist())
     print(f"  Urban centers: {len(gdf)}")
     for n in names:
         row = gdf[gdf["name"] == n].iloc[0]
