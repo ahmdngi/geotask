@@ -1,8 +1,6 @@
-"""
-Download Finland boundary from Natural Earth.
-"""
+"""Download Finland boundary from OSM (relation 54224)."""
 
-import sys, tempfile, zipfile, io
+import sys, json
 from pathlib import Path
 
 import geopandas as gpd
@@ -12,42 +10,32 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 ETL_DIR = ROOT / "data" / "etl"
-URLS = [
-    # Natural Earth CDN (primary) — sometimes flaky
-    "https://www.naturalearthdata.com/http//www.naturalearthdata.com/download/10m/cultural/ne_10m_admin_0_countries.zip",
-    # GitHub mirror (fallback)
-    "https://github.com/nvkelso/natural-earth-vector/raw/master/10m_cultural/ne_10m_admin_0_countries.zip",
-]
+FINLAND_OSM_RELATION = 54224
+# polygons.openstreetmap.fr serves OSM relations as GeoJSON
+OSM_URL = f"https://polygons.openstreetmap.fr/get_geojson.py?id={FINLAND_OSM_RELATION}&params=0"
 
 
 def main():
     ETL_DIR.mkdir(parents=True, exist_ok=True)
     out = ETL_DIR / "finland_boundary.geojson"
 
-    print("Downloading Natural Earth countries...")
-    r = None
-    for i, url in enumerate(URLS):
-        try:
-            r = requests.get(url, headers={"User-Agent": "GIS-Script/1.0"}, timeout=120)
-            r.raise_for_status()
-            print(f"  Source {i + 1}/{len(URLS)}: OK")
-            break
-        except requests.RequestException as e:
-            print(f"  Source {i + 1}/{len(URLS)} failed: {e}")
-            continue
-    if r is None:
-        print("ERROR: All download sources failed.")
+    print("Downloading Finland boundary from OSM...")
+    r = requests.get(OSM_URL, timeout=60)
+    if r.status_code != 200:
+        print(f"ERROR: OSM polygon API returned {r.status_code}")
         sys.exit(1)
 
-    with tempfile.TemporaryDirectory() as tmp:
-        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
-            z.extractall(tmp)
-        world = gpd.read_file(Path(tmp) / "ne_10m_admin_0_countries.shp")
+    data = r.json()
+    features = data.get("features", [])
+    if not features:
+        print("ERROR: No features in OSM response")
+        sys.exit(1)
 
-    finland = world[world["NAME"].str.lower() == "finland"]
+    gdf = gpd.GeoDataFrame.from_features(features, crs="EPSG:4326")
+    # Keep only the main Finland polygon
+    finland = gdf if len(gdf) == 1 else gdf[gdf["name"].str.lower().str.contains("finland", na=False)]
     if finland.empty:
-        print("ERROR: Finland not found")
-        sys.exit(1)
+        finland = gdf.iloc[[0]]  # fallback: first feature
 
     finland = finland.to_crs("EPSG:3067")
     area = finland.geometry.area.iloc[0] / 1e6
