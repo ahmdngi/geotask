@@ -1,9 +1,8 @@
-"""Process DEM tiles to slope + binary mask in parallel, then mosaic masks.
+"""Process DEM tiles to binary mask in parallel, then mosaic.
 Skips the intermediate full-DEM mosaic — avoids BIGTIFF issues.
 
 Input:  data/raw/dem_tiles/*.tiff (raw 2m DEM tiles from MML)
 Output: data/etl/suitability/{City}_FINLAND_gradient_suitable_8pct.tiff
-        data/etl/suitability/{City}_FINLAND_slope_percent.tiff
 """
 
 import sys
@@ -25,7 +24,7 @@ SUIT_DIR = ROOT / "data" / "etl" / "suitability"
 WORKERS = 10
 
 
-def process_tile(tif_path: Path) -> tuple[str, Path, Path] | None:
+def process_tile(tif_path: Path) -> tuple[str, Path] | None:
     """Compute slope + binary mask for one tile. Returns (label, mask_path, slope_path) or None."""
     label = tif_path.stem
 
@@ -54,16 +53,7 @@ def process_tile(tif_path: Path) -> tuple[str, Path, Path] | None:
                            compress="lzw", interleave="band") as dst:
             dst.write(mask, 1)
 
-        # Write slope tile
-        slope_path = tif_path.with_suffix(f".slope.tiff")
-        with rasterio.open(slope_path, "w", driver="GTiff",
-                           height=height, width=width,
-                           count=1, dtype=np.float32, crs=crs, transform=transform,
-                           tiled=True, blockxsize=256, blockysize=256,
-                           compress="lzw", interleave="band") as dst:
-            dst.write(slope_pct.astype(np.float32), 1)
-
-        return (label, mask_path, slope_path)
+        return (label, mask_path)
 
     except Exception as e:
         print(f"  FAIL {label}: {e}")
@@ -121,7 +111,7 @@ def main():
     SUIT_DIR.mkdir(parents=True, exist_ok=True)
     tif_paths = sorted(TILES_DIR.glob("*.tiff"))
     # Filter out previously generated mask/slope tiles
-    tif_paths = [p for p in tif_paths if not p.name.endswith((".mask.tiff", ".slope.tiff"))]
+    tif_paths = [p for p in tif_paths if not p.name.endswith(".mask.tiff")]
 
     if not tif_paths:
         print("No DEM tiles found.")
@@ -129,10 +119,9 @@ def main():
 
     print(f"Processing {len(tif_paths)} DEM tiles ({WORKERS} workers)...")
 
-    # Phase 1: compute slope + mask for each tile (parallel)
+    # Phase 1: compute mask for each tile (parallel)
     t0 = time.time()
     mask_paths = []
-    slope_paths = []
     done = 0
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         fut_map = {pool.submit(process_tile, p): p for p in tif_paths}
@@ -140,9 +129,8 @@ def main():
             done += 1
             result = fut.result()
             if result:
-                label, mp, sp = result
+                label, mp = result
                 mask_paths.append(mp)
-                slope_paths.append(sp)
                 print(f"  [{done}/{len(tif_paths)}] {label}: ✅")
 
     t1 = time.time()
@@ -158,13 +146,8 @@ def main():
     print("\nMosaicing binary masks...")
     mosaic_tiles(mask_paths, mask_out, np.uint8, nodata=0)
 
-    # Phase 3: mosaic slope tiles
-    slope_out = SUIT_DIR / f"{prefix}_slope_percent.tiff"
-    print("\nMosaicing slope tiles...")
-    mosaic_tiles(slope_paths, slope_out, np.float32)
-
-    # Cleanup temp mask/slope tiles
-    for p in list(TILES_DIR.glob("*.mask.tiff")) + list(TILES_DIR.glob("*.slope.tiff")):
+    # Cleanup temp mask tiles
+    for p in TILES_DIR.glob("*.mask.tiff"):
         p.unlink(missing_ok=True)
 
     total = time.time() - t0
