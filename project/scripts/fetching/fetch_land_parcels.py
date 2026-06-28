@@ -1,7 +1,8 @@
-"""Fetch land parcels (kiinteistöt) from MML OGC API Features. Output: EPSG:4326 GeoJSON. Filters to >= 10 ha.
+"""Fetch land parcels (kiinteistöt) from MML OGC API Features.
+Output: EPSG:4326 GeoJSON. Filters to >= 10 ha.
 
-Area filtering uses explicit reprojection to EPSG:3067 so it works regardless
-of whether the MML API honours the crs parameter (sometimes it returns WGS84)."""
+MML returns geometry in EPSG:3067 (metres); we reproject to 4326 for
+GeoJSON spec compliance so ArcGIS/QGIS can display it correctly."""
 
 import json
 import sys
@@ -10,7 +11,8 @@ from pathlib import Path
 
 import requests
 from pyproj import Transformer
-from shapely.geometry import shape
+from shapely.geometry import shape, mapping
+from shapely.ops import transform
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
@@ -23,29 +25,30 @@ MIN_AREA_HA = 10
 
 COLLECTION = "PalstanSijaintitiedot"
 
-_PROJ_TO_3067 = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True).transform
+# MML returns EPSG:3067; reproject back to 4326 for valid GeoJSON
+_TO_WGS84 = Transformer.from_crs("EPSG:3067", "EPSG:4326", always_xy=True).transform
 
 
 def wgs84_to_3067_bbox_str(wgs84_bbox: list[float]) -> str:
     """Convert [min_lat, min_lon, max_lat, max_lon] to EPSG:3067 bbox coords."""
-    transformer = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True)
-    minx, miny = transformer.transform(wgs84_bbox[1], wgs84_bbox[0])
-    maxx, maxy = transformer.transform(wgs84_bbox[3], wgs84_bbox[2])
+    t = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True)
+    minx, miny = t.transform(wgs84_bbox[1], wgs84_bbox[0])
+    maxx, maxy = t.transform(wgs84_bbox[3], wgs84_bbox[2])
     return f"{minx:.1f},{miny:.1f},{maxx:.1f},{maxy:.1f}"
 
 
-def area_ha_in_3067(geom) -> float:
-    """Reproject geometry to EPSG:3067 (metres) and return area in hectares."""
-    from shapely.ops import transform
-    g_proj = transform(_PROJ_TO_3067, geom)
-    return g_proj.area / 10000
+def to_4326_json(geom_3067: dict) -> dict:
+    """Convert a GeoJSON geometry dict from EPSG:3067 to EPSG:4326."""
+    s = shape(geom_3067)
+    s_wgs84 = transform(_TO_WGS84, s)
+    return mapping(s_wgs84)
 
 
 def fetch_large_parcels(bbox_3067: str) -> list[dict]:
     """Paginate MML parcels, keep only >= MIN_AREA_HA on-the-fly."""
     all_large = []
     seen_ids = set()
-    skipped_null_geom = 0
+    skipped_null = 0
     skipped_small = 0
     crs_param = "http://www.opengis.net/def/crs/EPSG/0/3067"
 
@@ -77,14 +80,15 @@ def fetch_large_parcels(bbox_3067: str) -> list[dict]:
         for f in features:
             g = f.get("geometry")
             if not g or g.get("type") not in ("Polygon", "MultiPolygon"):
-                skipped_null_geom += 1
+                skipped_null += 1
                 continue
             try:
-                s = shape(g)
-                ha = area_ha_in_3067(s)
+                s_3067 = shape(g)
+                ha = s_3067.area / 10000          # coords are in metres → sq m → ha
                 pid = f.get("properties", {}).get("kiinteistotunnus", "")
                 if ha >= MIN_AREA_HA and pid not in seen_ids:
                     seen_ids.add(pid)
+                    f["geometry"] = to_4326_json(g)   # reproject for GeoJSON
                     f["properties"]["area_ha"] = round(ha, 1)
                     all_large.append(f)
                     kept += 1
@@ -106,7 +110,7 @@ def fetch_large_parcels(bbox_3067: str) -> list[dict]:
                 break
         time.sleep(0.3)
 
-    print(f"  Skipped: {skipped_null_geom} null-geom, {skipped_small} < {MIN_AREA_HA} ha")
+    print(f"  Skipped: {skipped_null} null-geom, {skipped_small} < {MIN_AREA_HA} ha")
     return all_large
 
 
