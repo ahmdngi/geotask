@@ -26,15 +26,13 @@ WORKERS = 10
 SIMPLIFY_TOL = 5  # meters in EPSG:3067
 
 
-def process_tile(tif_path: Path) -> list[dict]:
-    """Read one DEM tile → gradient → binary mask → polygonize → return GeoJSON features."""
+def process_tile(tif_path: Path) -> dict | None:
+    """Read one DEM tile → gradient → binary mask → polygonize → dissolve → return single GeoJSON feature or None."""
     label = tif_path.stem
-    feats = []
     try:
         with rasterio.open(tif_path) as src:
             full_dem = src.read(1).astype(np.float64)
             transform = src.transform
-            crs = src.crs
             full_h, full_w = full_dem.shape
 
         # Downsample 8× for fast polygonization
@@ -51,21 +49,25 @@ def process_tile(tif_path: Path) -> list[dict]:
         slope_pct = np.where(np.isfinite(slope_pct), slope_pct, 10000.0)
         mask = (slope_pct < 8.0).astype(np.uint8)
 
-        # Only polygonize if there are suitable pixels
         if mask.sum() == 0:
-            return []
+            return None
 
         from shapely.geometry import shape, mapping
+        from shapely.ops import unary_union
+        polys = []
         for geom, val in shapes(mask, mask=mask, transform=transform_lo):
             if val == 1:
-                poly = shape(geom).simplify(SIMPLIFY_TOL)
-                feats.append({"type": "Feature", "geometry": mapping(poly), "properties": {}})
+                polys.append(shape(geom).simplify(SIMPLIFY_TOL))
+        if not polys:
+            return None
 
-        return feats
+        # Dissolve per tile — cheap (one tile's worth of polygons)
+        dissolved = unary_union(polys)
+        return {"type": "Feature", "geometry": mapping(dissolved), "properties": {}}
 
     except Exception as e:
         print(f"  FAIL {label}: {e}")
-        return []
+        return None
 
 
 def main():
@@ -83,33 +85,35 @@ def main():
 
     print(f"Processing {len(tif_paths)} DEM tiles ({WORKERS} workers)...")
 
-    # Phase 1: per-tile gradient → mask → polygonize (parallel)
+    # Phase 1: per-tile gradient → mask → polygonize → dissolve (parallel)
     t0 = time.time()
-    all_features: list[dict] = []
+    tile_features: list[dict] = []
     done = 0
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         fut_map = {pool.submit(process_tile, p): p for p in tif_paths}
         for fut in as_completed(fut_map):
             done += 1
-            fs = fut.result()
-            all_features.extend(fs)
-            print(f"  [{done}/{len(tif_paths)}] {fut_map[fut].stem}: {len(fs)} polygons")
+            feat = fut.result()
+            tile = fut_map[fut].stem
+            if feat:
+                tile_features.append(feat)
+            print(f"  [{done}/{len(tif_paths)}] {tile}: {'✅' if feat else '⏭️'}")
 
     t1 = time.time()
-    print(f"  Polygonized: {len(all_features)} features from {len(tif_paths)} tiles ({t1-t0:.0f}s)")
+    print(f"  Polygonized: {len(tile_features)} tiles with suitable area ({t1-t0:.0f}s)")
 
-    if not all_features:
+    if not tile_features:
         print("No suitable areas found in any tile.")
         sys.exit(0)
 
-    # Phase 2: merge + dissolve all features
-    print("\nMerging and dissolving...")
+    # Phase 2: merge + dissolve all tile features
+    print(f"\nMerging {len(tile_features)} tile polygons...")
     from shapely.geometry import shape, mapping
     from shapely.ops import unary_union, transform as shp_transform
     import pyproj
     t2 = time.time()
 
-    merged = unary_union([shape(f["geometry"]) for f in all_features])
+    merged = unary_union([shape(f["geometry"]) for f in tile_features])
     # Dissolve (unary_union already merges overlapping/adjacent), then simplify
     dissolved = merged.simplify(SIMPLIFY_TOL * 2)
 
