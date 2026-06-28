@@ -54,13 +54,16 @@ def main():
                       strokeColor="#3498db", strokeWidth=2, strokeDash="5,5",
                       fillColor="#3498db", fillOpacity=0.03, popup=["city", "buffer_km"])
 
-    # ── Gradient <8% suitable area (pre-computed GeoJSON from ETL) ──
-    geojson_path = SUIT_DIR / f"{prefix}_gradient_suitable_8pct.geojson"
-    gradient = load(geojson_path, "Gradient <8%")
-    if gradient["features"]:
-        m.add_geojson(gradient, name="Gradient <8%",
-                      strokeColor="#90ee90", strokeWidth=0.5,
-                      fillColor="#90ee90", fillOpacity=0.4)
+    # ── Gradient <8% suitable area (native raster layer — no polygonization) ──
+    raster_path = SUIT_DIR / f"{prefix}_gradient_suitable_8pct.tiff"
+    if raster_path.exists():
+        m.add_raster(
+            str(raster_path),
+            name="Gradient <8%",
+            colormap="Greens",
+            rescale=[[0, 1]],
+            opacity=0.45
+        )
 
     if parcels["features"]:
         m.add_geojson(parcels, name="Land parcels",

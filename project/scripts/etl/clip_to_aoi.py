@@ -90,7 +90,13 @@ def main():
 
                 # Fix invalid geometries BEFORE clipping
                 if gdf.crs is None:
-                    gdf.set_crs(TARGET_CRS, inplace=True)
+                    # Auto-detect CRS from coordinate range
+                    bounds = gdf.geometry.total_bounds  # [minx, miny, maxx, maxy]
+                    if bounds[0] > -180 and bounds[2] < 180 and bounds[1] > -90 and bounds[3] < 90:
+                        gdf.set_crs("EPSG:4326", inplace=True)
+                        gdf = gdf.to_crs(TARGET_CRS)
+                    else:
+                        gdf.set_crs(TARGET_CRS, inplace=True)
                 elif gdf.crs.to_string() != TARGET_CRS:
                     gdf = gdf.to_crs(TARGET_CRS)
 
