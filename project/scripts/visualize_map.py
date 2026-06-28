@@ -58,7 +58,8 @@ def main():
     mask_tif = SUIT_DIR / f"{prefix}_gradient_suitable_8pct.tiff"
     if mask_tif.exists():
         m.add_cog(str(mask_tif), name="Gradient <8%",
-                  colormap="Greens", opacity=0.4)
+                  colormap={"0": "rgba(0,0,0,0)", "1": "#90ee90"},
+                  opacity=0.4)
 
     if parcels["features"]:
         m.add_geojson(parcels, name="Land parcels",
