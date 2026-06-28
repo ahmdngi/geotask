@@ -12,16 +12,16 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 body { display: flex; flex-direction: column; }
 #map { flex: 1; }
 #bar {
-  padding: 12px 20px;
+  padding: 10px 20px;
   background: #1a1a2e;
   color: #eee;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
   border-top: 2px solid #e94560;
 }
-#bar h2 { font-size: 16px; color: #e94560; font-weight: 600; }
+#bar h2 { font-size: 15px; color: #e94560; font-weight: 600; white-space: nowrap; }
 #bar .info { font-size: 13px; color: #aaa; }
 #bar button {
   margin-left: auto;
@@ -38,7 +38,11 @@ body { display: flex; flex-direction: column; }
 #status { font-size: 13px; padding: 4px 12px; border-radius: 4px; }
 #status.selected { background: #2ecc71; color: #fff; }
 #status.waiting { background: #555; color: #ccc; }
-#preview { font-size: 12px; color: #7f8c8d; max-width: 500px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#preview { font-size: 12px; color: #7f8c8d; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#bufferOpts { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+#bufferOpts label { cursor: pointer; padding: 4px 10px; border-radius: 4px; background: #333; }
+#bufferOpts input:checked + label { background: #e94560; font-weight: 600; }
+#bufferOpts input { display: none; }
 .legend {
   background: rgba(255,255,255,0.92);
   padding: 10px 14px;
@@ -53,52 +57,76 @@ body { display: flex; flex-direction: column; }
 <body>
 <div id="map"></div>
 <div id="bar">
-  <h2>📍 AOI City Picker</h2>
-  <span id="status" class="waiting">⏳ waiting...</span>
+  <h2>📍 City Picker</h2>
+  <div id="bufferOpts">
+    <span style="color:#aaa;">Buffer:</span>
+    <input type="radio" name="buffer" id="buf50" value="50">
+    <label for="buf50">50 km</label>
+    <input type="radio" name="buffer" id="buf100" value="100" checked>
+    <label for="buf100">100 km</label>
+  </div>
+  <span id="status" class="waiting">⏳ pick a city...</span>
   <span id="preview"></span>
   <button id="confirmBtn" disabled>⬇ Save & Close</button>
 </div>
 
 <script>
 const CITIES = [
-  { name: "Helsinki",     lat: 60.1666, lng: 24.9435, buffer: 100 },
-  { name: "Tampere",      lat: 61.4978, lng: 23.7616, buffer: 100 },
-  { name: "Turku",        lat: 60.4516, lng: 22.2670, buffer: 100 },
-  { name: "Oulu",         lat: 65.0118, lng: 25.4702, buffer: 100 },
-  { name: "Jyväskylä",    lat: 62.2426, lng: 25.7473, buffer: 100 },
-  { name: "Kuopio",       lat: 62.8920, lng: 27.6770, buffer: 100 },
-  { name: "Lahti",        lat: 60.9827, lng: 25.6612, buffer: 100 },
-  { name: "Vaasa",        lat: 63.0960, lng: 21.6158, buffer: 100 },
-  { name: "Pori",         lat: 61.4848, lng: 21.7972, buffer: 100 },
-  { name: "Joensuu",      lat: 62.6010, lng: 29.7636, buffer: 100 },
-  { name: "Lappeenranta", lat: 61.0587, lng: 28.1887, buffer: 100 },
-  { name: "Rovaniemi",    lat: 66.5039, lng: 25.7294, buffer: 100 },
+  { name: "Helsinki",     lat: 60.1666, lng: 24.9435 },
+  { name: "Tampere",      lat: 61.4978, lng: 23.7616 },
+  { name: "Turku",        lat: 60.4516, lng: 22.2670 },
+  { name: "Oulu",         lat: 65.0118, lng: 25.4702 },
+  { name: "Jyväskylä",    lat: 62.2426, lng: 25.7473 },
+  { name: "Kuopio",       lat: 62.8920, lng: 27.6770 },
+  { name: "Lahti",        lat: 60.9827, lng: 25.6612 },
+  { name: "Vaasa",        lat: 63.0960, lng: 21.6158 },
+  { name: "Pori",         lat: 61.4848, lng: 21.7972 },
+  { name: "Joensuu",      lat: 62.6010, lng: 29.7636 },
+  { name: "Lappeenranta", lat: 61.0587, lng: 28.1887 },
+  { name: "Rovaniemi",    lat: 66.5039, lng: 25.7294 },
 ];
 
-// EPSG:3067 → WGS84 buffer helper: approximate (1° ≈ 111km)
 let selected = null;
+let circleLayer = null;
 
 const map = L.map('map', { zoomControl: true }).setView([63.0, 25.5], 5);
-
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
   attribution: '&copy; OSM contributors &copy; CARTO',
   maxZoom: 18,
 }).addTo(map);
 
-// Buffer circles
-function addCity(city) {
-  const degPerKm = 1 / 111;
-  const radius = city.buffer * degPerKm;
+function getBufferKm() {
+  return parseInt(document.querySelector('input[name="buffer"]:checked').value, 10);
+}
 
-  const circle = L.circle([city.lat, city.lng], {
-    radius: city.buffer * 1000,
+function updatePreview(city) {
+  const b = getBufferKm();
+  const degPerKm = 1 / 111;
+  const r = b * degPerKm;
+  document.getElementById('status').textContent = '✓ ' + city.name + ' (' + b + 'km)';
+  document.getElementById('status').className = 'selected';
+  document.getElementById('preview').textContent =
+    `bbox: [${(city.lat - r).toFixed(2)}, ${(city.lng - r).toFixed(2)}, ${(city.lat + r).toFixed(2)}, ${(city.lng + r).toFixed(2)}]`;
+  document.getElementById('confirmBtn').disabled = false;
+}
+
+function updateCircle() {
+  if (!selected) return;
+  if (circleLayer) map.removeLayer(circleLayer);
+  const b = getBufferKm();
+  circleLayer = L.circle([selected.lat, selected.lng], {
+    radius: b * 1000,
     color: '#e94560',
     fillColor: '#e94560',
     fillOpacity: 0.08,
     weight: 2,
     dashArray: '6 6',
   }).addTo(map);
+  map.fitBounds(circleLayer.getBounds(), { padding: [40, 40] });
+  updatePreview(selected);
+}
 
+CITIES.forEach(city => {
   const marker = L.circleMarker([city.lat, city.lng], {
     radius: 8,
     color: '#e94560',
@@ -106,30 +134,27 @@ function addCity(city) {
     fillOpacity: 1,
     weight: 3,
   }).addTo(map);
-
   marker.bindTooltip(city.name, { permanent: true, direction: 'top', offset: [0, -12] });
-
-  const onClick = () => {
+  marker.on('click', () => {
     selected = city;
-    document.getElementById('status').textContent = '✓ ' + city.name;
-    document.getElementById('status').className = 'selected';
-    document.getElementById('preview').textContent =
-      `bbox: [${(city.lat - radius).toFixed(2)}, ${(city.lng - radius).toFixed(2)}, ${(city.lat + radius).toFixed(2)}, ${(city.lng + radius).toFixed(2)}]  •  ${city.buffer}km buffer`;
-    document.getElementById('confirmBtn').disabled = false;
-    map.fitBounds(circle.getBounds(), { padding: [40, 40] });
-  };
+    updateCircle();
+  });
+});
 
-  marker.on('click', onClick);
-  circle.on('click', onClick);
-}
+// Buffer radio change → redraw circle
+document.querySelectorAll('input[name="buffer"]').forEach(el => {
+  el.addEventListener('change', () => {
+    if (selected) updateCircle();
+  });
+});
 
-CITIES.forEach(addCity);
-
-// Confirm → POST to server
 document.getElementById('confirmBtn').addEventListener('click', async () => {
   if (!selected) return;
-  const payload = { city: selected.name, center_wgs84: [selected.lat, selected.lng], buffer_km: selected.buffer };
-
+  const payload = {
+    city: selected.name,
+    center_wgs84: [selected.lat, selected.lng],
+    buffer_km: getBufferKm(),
+  };
   try {
     const resp = await fetch('/save', {
       method: 'POST',
@@ -137,7 +162,7 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
       body: JSON.stringify(payload),
     });
     if (resp.ok) {
-      document.getElementById('status').textContent = '✓ Saved — you can close this tab';
+      document.getElementById('status').textContent = '✓ Saved — close this tab';
       document.getElementById('confirmBtn').textContent = '✅ Saved';
       document.getElementById('confirmBtn').disabled = true;
     } else {
