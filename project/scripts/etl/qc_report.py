@@ -48,16 +48,17 @@ def check_layer(path: Path, label: str) -> list[str]:
         issues.append(f"  ⚠️  EMPTY LAYER")
         return issues
 
-    # CRS
+    # CRS — GeoJSON should be WGS84 per spec, TIFF should be 3067
     crs = gdf.crs
+    expected_crs = "EPSG:4326" if path.suffix == ".geojson" else TARGET_CRS
     if crs is None:
         issues.append(f"  ❌ CRS: None")
     else:
         crs_str = crs.to_string()
-        if crs_str == TARGET_CRS:
+        if crs_str == expected_crs:
             issues.append(f"  ✅ CRS: {crs_str}")
         else:
-            issues.append(f"  ❌ CRS: {crs_str} (expected {TARGET_CRS})")
+            issues.append(f"  ❌ CRS: {crs_str} (expected {expected_crs})")
 
     # Geometry type
     geom_types = gdf.geometry.geom_type.value_counts().to_dict()
