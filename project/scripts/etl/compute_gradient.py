@@ -59,8 +59,12 @@ def main():
     suitable = (slope_pct < 8.0).astype(np.uint8)
     with rasterio.open(mask_tif, "w", driver="GTiff",
                        height=suitable.shape[0], width=suitable.shape[1],
-                       count=1, dtype=np.uint8, crs=crs, transform=transform, nodata=0) as dst:
+                       count=1, dtype=np.uint8, crs=crs, transform=transform,
+                       nodata=0, tiled=True, blockxsize=256, blockysize=256,
+                       compress="lzw", interleave="band") as dst:
         dst.write(suitable, 1)
+        dst.build_overviews([2, 4, 8, 16], rasterio.enums.Resampling.nearest)
+        dst.update_tags(ns='rio_overview', resampling='nearest')
     print(f"  Mask:      {mask_tif.name}")
 
     total_px = suitable.size
