@@ -1,5 +1,5 @@
 """
-Fetch OSM infrastructure data (power lines, substations, power plants, data centers).
+Fetch OSM infrastructure data (power lines, substations, power plants).
 
 Source: Overpass API (no auth, requires User-Agent)
 Native CRS: WGS84 (EPSG:4326)
@@ -32,7 +32,6 @@ LAYERS = {
     "power_lines": {"power": "line"},
     "substations": {"power": "substation"},
     "power_plants": {"power": ["plant", "generator"]},
-    "data_centers": {"building": "datacenter", "man_made": "data_center", "office": "it"},
 }
 
 
@@ -84,12 +83,6 @@ def classify_element(el: dict) -> list[str]:
         labels.append("substations")
     if power in ("plant", "generator"):
         labels.append("power_plants")
-    if (
-        tags.get("building") == "datacenter"
-        or tags.get("man_made") == "data_center"
-        or tags.get("office") == "it"
-    ):
-        labels.append("data_centers")
     return labels
 
 
@@ -125,20 +118,11 @@ def main():
         '  way["power"="plant"];'
         '  node["power"="generator"];'
         '  way["power"="generator"];'
-        '  node["building"="datacenter"];'
-        '  way["building"="datacenter"];'
-        '  relation["building"="datacenter"];'
-        '  node["man_made"="data_center"];'
-        '  way["man_made"="data_center"];'
-        '  relation["man_made"="data_center"];'
-        '  node["office"="it"];'
-        '  way["office"="it"];'
-        '  relation["office"="it"];'
         ');'
         'out geom;'
     )
 
-    print("Fetching OSM infrastructure (power lines, substations, plants, data centers)...")
+    print("Fetching OSM infrastructure (power lines, substations, plants)...")
     data = overpass_query(q)
     elements = data.get("elements", [])
     print(f"  Raw elements: {len(elements)}")
@@ -153,7 +137,7 @@ def main():
             all_features.setdefault(label, []).append(feat)
 
     # Save each layer
-    for label in ["power_lines", "substations", "power_plants", "data_centers"]:
+    for label in ["power_lines", "substations", "power_plants"]:
         save_geojson(all_features.get(label, []), label)
 
 
