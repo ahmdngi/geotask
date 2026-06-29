@@ -70,8 +70,8 @@ def main():
     exclusion = load(EXCL_DIR / f"{prefix}_exclusion_zones.geojson", "Exclusions")
     buffer = load(OUT_DIR / f"{prefix}_buffer.geojson", "Buffer")
 
-    # Split OSM substations: those with voltage → choropleth, rest → plain
-    sub_has, sub_no = split_by_field(substations, "voltage", max_voltage)
+    # Split OSM substations: those with voltage → choropleth
+    sub_has, _ = split_by_field(substations, "voltage", max_voltage)
 
     # Split power plants: those with output → choropleth
     pp_has, _ = split_by_field(power_plants, "generator:output:electricity", float)
@@ -111,12 +111,6 @@ def main():
                          circleRadius=8, textField="{voltage}", textSize=9,
                          textColor="#006400", textHaloColor="#fff", textHaloWidth=1,
                          popup=["name", "voltage"])
-    # OSM substations without voltage — keep symbol, no color/label
-    if sub_no["features"]:
-        m.add_geojson(sub_no, name="Substations (OSM, no voltage)",
-                      strokeColor="#999", strokeWidth=1,
-                      fillColor="rgba(0,0,0,0)", circleRadius=5,
-                      popup=["name"])
 
     # ── Power lines ──
     m.add_geojson(power_lines, name="Power lines", strokeColor="#e74c3c",
