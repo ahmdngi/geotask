@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+project/data/raw/
+project/data/etl/
+project/outputs/*.html
+*.tiff
+*.tif
+node_modules/
+.vscode/

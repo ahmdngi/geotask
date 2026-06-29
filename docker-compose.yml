@@ -1,0 +1,16 @@
+services:
+  pipeline:
+    build:
+      context: .
+      args:
+        WITH_PLAYWRIGHT: "0"   # set to "1" to enable the data-center scraper
+    image: geotask:latest
+    environment:
+      MML_KEY: ${MML_KEY:-}     # MML API key for parcels + DEM (parcels/DEM skipped if empty)
+    volumes:
+      - ./project/data:/app/data
+      - ./project/outputs:/app/outputs
+      - ./project/config:/app/config
+    # Default runs ETL + scoring. To fetch first:
+    #   docker compose run --rm pipeline python scripts/fetch_all.py
+    command: ["python", "scripts/run_etl.py"]
