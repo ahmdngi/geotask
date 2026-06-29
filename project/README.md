@@ -1,6 +1,8 @@
 # GIS Site Suitability — Finland Data Centers
 
-Geospatial data pipeline for data center siting analysis in Finland. Downloads and processes 9 data layers, computes slope gradient, clips to AOI, and produces an interactive map.
+Reproducible geospatial pipeline for data-center site selection in Finland. It ingests 9 layers, harmonizes CRS, clips to an area of interest, applies a two-stage suitability model (hard exclusions + weighted scoring), and produces a ranked shortlist plus an interactive map.
+
+**Region-agnostic:** Oulu is shown as the example AOI, but the pipeline works for any major Finnish city (Helsinki, Tampere, Turku, Oulu) at a 50 or 100 km buffer — set it in `config/aoi.json` or pick interactively with `city_picker.py`. Data availability varies by region (e.g. no existing data centers near Oulu).
 
 ## Structure
 
@@ -33,12 +35,14 @@ project/
 │   └── etl/
 │       ├── fetch_finland_boundary.py # Finland boundary (OSM)
 │       ├── clip_to_aoi.py            # Clip all data to AOI
-│       ├── compute_gradient.py       # Slope <8% mask
+│       ├── process_dem_tiles.py      # Slope <8% mask + WGS84 web copy
 │       ├── merge_exclusions.py       # Merge exclusion zones
 │       └── qc_report.py              # Validation report
+│   └── scoring/
+│       └── score_parcels.py # Two-stage suitability model
 ├── outputs/
-│   ├── candidates.geojson   # Candidate parcels (placeholder — scoring TBD)
-│   ├── candidate_scores.csv # Ranked scores (placeholder — scoring TBD)
+│   ├── candidates.geojson   # Top-20 candidate parcels (scored)
+│   ├── candidate_scores.csv # Ranked score table
 │   └── final_map.html       # Final deliverable map
 └── .gitignore
 ```
@@ -75,6 +79,12 @@ python scripts/run_etl.py
 python scripts/visualize_map.py
 ```
 
+Scoring runs as the last ETL step and writes the deliverables to `outputs/`. The map writes to both `data/etl/<City>_FINLAND_map.html` and `outputs/final_map.html`.
+
+## Choosing the AOI
+
+Edit `config/aoi.json` (`city`, `center_wgs84`, `buffer_km`) or run `python scripts/city_picker.py` and click a city; saving sets the AOI and triggers fetching. All filenames are prefixed `<City>_FINLAND_*`, so switching city + buffer re-runs cleanly end to end.
+
 ## Data sources
 
 | Layer | Source |
@@ -93,13 +103,32 @@ python scripts/visualize_map.py
 
 1. **Fetch** — downloads each layer to `data/raw/` as GeoJSON
 2. **Finland boundary** — from OSM relation 54224
-3. **Clip** — clip to AOI circular buffer + Finland boundary
-4. **Gradient** — slope <8% binary mask raster + coverage outline
+3. **Clip** — clip to AOI circular buffer + Finland boundary, reproject to EPSG:4326
+4. **Gradient** — slope <8% binary mask raster (EPSG:3067) + WGS84 web copy
 5. **Exclusions** — merge Natura2000 + flood + reserves into one layer
 6. **QC report** — validates CRS, geometry, feature counts
-7. **Map** — interactive Leaflet map with all layers + slope overlay
+7. **Scoring** — two-stage suitability → top-20 candidates
+8. **Map** — interactive GeoLibre map: candidates, grid, exclusions, legend + colorbar
 
 All outputs in EPSG:4326 (GeoJSON) / EPSG:3067 (TIFF).
+
+## Scoring model
+
+**Stage 1 — fatal-flaw filter:** drop parcels in exclusion zones (Natura/flood/reserves), off the <8% slope mask, or <10 ha.
+
+**Stage 2 — weighted scoring** (7 dims, each 0–10, centroid-based):
+
+| Dim | Weight | Signal |
+|-----|--------|--------|
+| grid | 0.25 | MW headroom at nearest Fingrid substation |
+| hv | 0.15 | distance to 220/400 kV lines |
+| dc | 0.15 | distance to existing data centers |
+| size | 0.15 | parcel area (10–100 ha) |
+| urban | 0.10 | distance to 100k+ city |
+| gen | 0.10 | distance to power plants |
+| zoning | 0.10 | industrial land use |
+
+Weighted sum (Σw = 1.0). Missing dims default to neutral 5.0. Ranked top-20 → `outputs/`.
 
 ## Dependencies
 
