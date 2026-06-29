@@ -45,3 +45,5 @@ Weighted sum (Σw = 1.0). Missing dimensions default to neutral 5.0.
 - Fingrid capacity refresh-check → auto re-run.
 - PostGIS schema with versioning/lineage for multi-country use.
 - Tile/host the slope raster so it shows in the shared map.
+- Further data integration + QC checks to fill missing values and aggregate equivalent fields across sources (e.g. capacity, zoning, DC locations from OSM/DCD/BroadGroup).
+- Efficiency improvements in fetching and processing — parallel/async downloads, caching, spatial indexing, and chunked raster ops for larger AOIs.
