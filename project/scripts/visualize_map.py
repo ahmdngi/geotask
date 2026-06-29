@@ -42,6 +42,7 @@ def main():
     power_plants = load(CLIP_DIR / f"{prefix}_osm_power_plants.geojson", "Power plants")
     datacenters = load(CLIP_DIR / f"{prefix}_datacentermap.geojson", "Data centers")
     parcels = load(CLIP_DIR / f"{prefix}_mml_land_parcels.geojson", "Land parcels")
+    scored = load(SUIT_DIR / f"{prefix}_scored_parcels.geojson", "Scored parcels")
     urban = load(CLIP_DIR / f"{prefix}_osm_urban_centers.geojson", "Urban centers")
     natura = load(CLIP_DIR / f"{prefix}_natura2000.geojson", "Natura2000")
     exclusion = load(EXCL_DIR / f"{prefix}_exclusion_zones.geojson", "Exclusions")
@@ -54,22 +55,37 @@ def main():
                       strokeColor="#3498db", strokeWidth=2, strokeDash="5,5",
                       fillColor="#3498db", fillOpacity=0.03, popup=["city", "buffer_km"])
 
-    if parcels["features"]:
+    # ── Scored parcels (MCDM choropleth) ──
+    if scored["features"]:
+        m.add_choropleth(scored, column="mcdm_score", name="Parcel score (MCDM)",
+                         class_count=5, colormap="Greens", scheme="quantile",
+                         fillOpacity=0.5, strokeColor="#2d7d2d", strokeWidth=0.5,
+                         popup=["kiinteistotunnus", "mcdm_score", "area_ha",
+                                "score_grid", "score_hv", "score_urban",
+                                "score_dc", "score_gen", "score_size"])
+    elif parcels["features"]:
         m.add_geojson(parcels, name="Land parcels",
                       strokeColor="#8e44ad", strokeWidth=1,
                       fillColor="#8e44ad", fillOpacity=0.05,
                       popup=["kiinteistotunnus", "area_ha"])
 
-    m.add_choropleth(fingrid, column="Kulutus_25", name="Substations (consumption MW)",
+    m.add_choropleth(fingrid, column="Kulutus_25", name="Fingrid (MW headroom)",
                      class_count=5, colormap="YlOrRd", scheme="quantile",
-                     circleRadius=10, popup=["SA", "Tyyppi", "Kulutus_25"])
+                     circleRadius=10, textField="{Kulutus_25} MW", textSize=10,
+                     textColor="#333", textHaloColor="#fff", textHaloWidth=1,
+                     popup=["SA", "Tyyppi", "Kulutus_25"])
 
     m.add_geojson(power_lines, name="Power lines", strokeColor="#e74c3c",
                   strokeWidth=2, popup=["voltage", "name", "operator"])
     m.add_geojson(substations, name="Substations (OSM)", strokeColor="#3498db",
-                  circleRadius=6, popup=["name", "voltage"])
+                  circleRadius=6, textField="{voltage}", textSize=9,
+                  textColor="#2980b9", textHaloColor="#fff", textHaloWidth=1,
+                  popup=["name", "voltage"])
     m.add_geojson(power_plants, name="Power plants", strokeColor="#2ecc71",
-                  circleRadius=8, popup=["name", "generator:source", "plant:source"])
+                  circleRadius=8, textField="{generator:output:electricity}",
+                  textSize=9, textColor="#27ae60", textHaloColor="#fff",
+                  textHaloWidth=1,
+                  popup=["name", "generator:source", "generator:output:electricity"])
 
     if datacenters["features"]:
         m.add_geojson(datacenters, name="Data centers", strokeColor="#9b59b6",

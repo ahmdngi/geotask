@@ -50,6 +50,18 @@ GEN_DIST = dict(d_min=1_000, d_max=50_000)        # 1-50 km
 PARCEL_SIZE = dict(min_ha=10, max_ha=100)
 MAX_GRID_MW = 500  # normalisation ceiling for Kulutus_25 headroom
 
+# ── MCDM weights (weighted sum model) ────────────────────────────────
+# Sum of weights = 1.0. Adjust per criterion importance.
+MCDM_WEIGHTS = {
+    "grid": 0.25,    # Power headroom — #1 constraint for data centers
+    "hv": 0.15,      # HV transmission access
+    "urban": 0.10,   # Workforce & fiber connectivity
+    "dc": 0.15,      # Existing DC cluster (infrastructure co-location)
+    "gen": 0.10,     # Generation proximity (PPA / grid-tie)
+    "size": 0.15,    # Parcel area
+    "zoning": 0.10,  # Land use compatibility
+}
+
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -227,29 +239,29 @@ def main():
         scores["zoning_score"] = np.full(len(parcels), 3.0)  # neutral
         print("  Zoning: no zoning column — default 3/10")
 
-    # ── Aggregate to total score (0-10) ──────────────────────────────
+    # ── MCDM aggregation (weighted sum model) ────────────────────────
     # Normalise grid MW to 0-10
     grid_norm = np.clip(scores["grid_mw"] / MAX_GRID_MW, 0, 1) * 10
 
-    # Build score matrix: each row = parcel, each col = dimension
-    dim_names = ["grid_norm", "hv_score", "urban_score", "dc_score",
-                 "gen_score", "size_score", "zoning_score"]
+    # Build score matrix
+    w = MCDM_WEIGHTS
     score_df = pd.DataFrame({
-        "grid_norm": grid_norm,
-        "hv_score": scores["hv_score"],
-        "urban_score": scores["urban_score"],
-        "dc_score": scores["dc_score"],
-        "gen_score": scores["gen_score"],
-        "size_score": scores["size_score"],
-        "zoning_score": scores["zoning_score"],
-    })
+        "s_grid": grid_norm,
+        "s_hv": scores["hv_score"],
+        "s_urban": scores["urban_score"],
+        "s_dc": scores["dc_score"],
+        "s_gen": scores["gen_score"],
+        "s_size": scores["size_score"],
+        "s_zoning": scores["zoning_score"],
+    }).fillna(5.0)  # neutral for missing dimensions
 
-    # Fill NaN dimensions with neutral (5.0) — means "no data available"
-    score_df = score_df.fillna(5.0)
+    # Weighted sum
+    dims = ["s_grid", "s_hv", "s_urban", "s_dc", "s_gen", "s_size", "s_zoning"]
+    weights = [w["grid"], w["hv"], w["urban"], w["dc"], w["gen"], w["size"], w["zoning"]]
+    mcdm = (score_df[dims] * weights).sum(axis=1) / sum(weights)
 
-    # Equal weight average → 0-10
-    total = score_df.mean(axis=1)
-    parcels["score_total"] = total.round(1)
+    # Assign output fields
+    parcels["mcdm_score"] = mcdm.round(1)
     parcels["score_grid"] = grid_norm.round(1)
     parcels["score_hv"] = scores["hv_score"].round(1)
     parcels["score_urban"] = scores["urban_score"].round(1)
@@ -259,19 +271,19 @@ def main():
     parcels["score_zoning"] = scores["zoning_score"].round(1)
     parcels["area_ha"] = areas_ha.round(1)
 
-    # Sort descending by total score
-    parcels = parcels.sort_values("score_total", ascending=False).reset_index(drop=True)
+    # Sort descending by MCDM score
+    parcels = parcels.sort_values("mcdm_score", ascending=False).reset_index(drop=True)
 
     # Print summary
     print(f"\n{'=' * 60}")
     print(f"  Scored: {len(parcels)} parcels")
-    print(f"  Score range: {parcels['score_total'].min():.1f} – {parcels['score_total'].max():.1f}")
-    print(f"  Mean: {parcels['score_total'].mean():.1f}")
+    print(f"  MCDM range: {parcels['mcdm_score'].min():.1f} – {parcels['mcdm_score'].max():.1f}")
+    print(f"  Mean: {parcels['mcdm_score'].mean():.1f}")
     print(f"  Top 5:")
     for i in range(min(5, len(parcels))):
         p = parcels.iloc[i]
         print(f"    {i+1}. {p.get('kiinteistotunnus', '?')}  "
-              f"score={p['score_total']:.1f}  "
+              f"mcdm={p['mcdm_score']:.1f}  "
               f"grid={p['score_grid']:.1f}  hv={p['score_hv']:.1f}  "
               f"urban={p['score_urban']:.1f}  dc={p['score_dc']:.1f}  "
               f"gen={p['score_gen']:.1f}  size={p['score_size']:.1f}")
@@ -287,11 +299,11 @@ def main():
     # ── Stats ──
     stats = {
         "n_parcels": len(out),
-        "score_mean": round(float(parcels["score_total"].mean()), 1),
-        "score_min": round(float(parcels["score_total"].min()), 1),
-        "score_max": round(float(parcels["score_total"].max()), 1),
+        "mcdm_mean": round(float(parcels["mcdm_score"].mean()), 1),
+        "mcdm_min": round(float(parcels["mcdm_score"].min()), 1),
+        "mcdm_max": round(float(parcels["mcdm_score"].max()), 1),
         "top_kite": out.iloc[0].get("kiinteistotunnus", "") if len(out) else "",
-        "top_score": round(float(parcels["score_total"].max()), 1),
+        "top_mcdm": round(float(parcels["mcdm_score"].max()), 1),
     }
     stats_path = OUT_DIR / f"{prefix}_scored_parcels_stats.json"
     stats_path.write_text(json.dumps(stats, indent=2), encoding="utf-8")
