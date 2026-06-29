@@ -73,8 +73,8 @@ def main():
     # Split OSM substations: those with voltage → choropleth, rest → plain
     sub_has, sub_no = split_by_field(substations, "voltage", max_voltage)
 
-    # Split power plants: those with output → choropleth, rest → plain
-    pp_has, pp_no = split_by_field(power_plants, "generator:output:electricity", float)
+    # Split power plants: those with output → choropleth
+    pp_has, _ = split_by_field(power_plants, "generator:output:electricity", float)
 
     m = Map(center=CENTER, zoom=9, basemap="bright", layout="embed", height="700px")
 
@@ -130,12 +130,6 @@ def main():
                          textSize=9, textColor="#006400", textHaloColor="#fff",
                          textHaloWidth=1,
                          popup=["name", "generator:source", "generator:output:electricity"])
-    # Power plants without output — keep symbol
-    if pp_no["features"]:
-        m.add_geojson(pp_no, name="Power plants (no output data)",
-                      strokeColor="#2ecc71", strokeWidth=1,
-                      fillColor="rgba(0,0,0,0)", circleRadius=6,
-                      popup=["name", "generator:source"])
 
     if datacenters["features"]:
         m.add_geojson(datacenters, name="Data centers", strokeColor="#9b59b6",
