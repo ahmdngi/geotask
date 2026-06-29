@@ -1,9 +1,7 @@
-"""Process DEM tiles in parallel: gradient → binary mask → mosaic TIFF → polygonized GeoJSON.
-The GeoJSON is a single dissolved polygon (one shapes() call on the tiny merged mask).
+"""Process DEM tiles in parallel: gradient → binary mask → mosaic TIFF.
 
 Input:  data/raw/dem_tiles/*.tiff (raw 2m DEM tiles from MML)
-Output: data/etl/suitability/{City}_FINLAND_gradient_suitable_8pct.tiff   (uint8, tiled, LZW)
-        data/etl/suitability/{City}_FINLAND_gradient_suitable_8pct.geojson (for map viz)
+Output: data/etl/suitability/{City}_FINLAND_gradient_suitable_8pct.tiff  (uint8, tiled, LZW)
 """
 
 import sys
@@ -115,29 +113,7 @@ def main():
         s.close()
 
     mb = out.stat().st_size / 1e6
-    print(f"  Saved: {out.name} ({mb:.1f} MB) — for analysis")
-
-    # ── Polygonize merged mask → GeoJSON (single operation on tiny raster) ──
-    print("Polygonizing merged mask to GeoJSON...")
-    from rasterio.features import shapes
-    from shapely.geometry import shape, mapping
-    from shapely.ops import unary_union, transform as shp_transform
-    import pyproj, json
-    polys = []
-    for geom, val in shapes(mosaic[0], mask=mosaic[0], transform=xform):
-        if val == 1:
-            polys.append(shape(geom).simplify(5))
-    if polys:
-        merged = unary_union(polys).simplify(10)
-        proj = pyproj.Transformer.from_crs("EPSG:3067", "EPSG:4326", always_xy=True).transform
-        merged_wgs84 = shp_transform(proj, merged)
-        fc = {"type": "FeatureCollection",
-              "features": [{"type": "Feature", "geometry": mapping(merged_wgs84), "properties": {}}]}
-        geojson_path = SUIT_DIR / f"{AOI_CITY}_FINLAND_gradient_suitable_8pct.geojson"
-        with open(geojson_path, "w", encoding="utf-8") as f:
-            json.dump(fc, f)
-        kb = geojson_path.stat().st_size / 1024
-        print(f"  GeoJSON: {geojson_path.name} ({kb:.0f} KB) — for viewing")
+    print(f"  Saved: {out.name} ({mb:.1f} MB)")
 
     total = time.time() - t0
     print(f"\nDone in {total:.0f}s")
