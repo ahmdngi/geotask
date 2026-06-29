@@ -47,3 +47,5 @@ Weighted sum (Σw = 1.0). Missing dimensions default to neutral 5.0.
 - Tile/host the slope raster so it shows in the shared map.
 - Further data integration + QC checks to fill missing values and aggregate equivalent fields across sources (e.g. capacity, zoning, DC locations from OSM/DCD/BroadGroup).
 - Efficiency improvements in fetching and processing — parallel/async downloads, caching, spatial indexing, and chunked raster ops for larger AOIs.
+- Dynamic multi-criteria scoring with absolute thresholds/benchmarks rather than weights normalised to the parcels present in the AOI, so scores are comparable across regions and runs.
+- Store layers as GeoParquet (partitioned, columnar) for fast, cloud-native I/O and easy versioning across countries.

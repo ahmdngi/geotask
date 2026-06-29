@@ -52,3 +52,4 @@ CREATE INDEX ON substations USING GIST (geom);
 - **Lineage:** `snapshot_id` → `source_snapshot` ties every feature to URL, hash, fetch time. Raw fields kept in `attrs`.
 - **Multi-country:** `country` column + partitioning; all geoms in metric national CRS (3067 for FI) or a common projection.
 - Candidates/scores reference the snapshot used, so results are reproducible.
+- **Storage:** persist each snapshot as partitioned **GeoParquet** (by country/layer/fetch date) for cloud-native, columnar reads; load to PostGIS for spatial queries. Parquet = versioned lineage on object storage, PostGIS = serving.
