@@ -21,7 +21,7 @@ OUT_DIR = ROOT / "data" / "etl"
 CENTER = [AOI_CENTER_WGS84[1], AOI_CENTER_WGS84[0]]
 
 
-def load(path: Path, label=""):
+def load(path: Path, label="") -> dict:
     if not path.exists():
         return {"type": "FeatureCollection", "features": []}
     try:
@@ -31,6 +31,28 @@ def load(path: Path, label=""):
         return data
     except Exception:
         return {"type": "FeatureCollection", "features": []}
+
+
+def split_by_field(fc: dict, field: str, parse_num=str) -> tuple[dict, dict]:
+    """Split a FeatureCollection into two: features WITH a parseable field value, and those WITHOUT."""
+    has_val, no_val = [], []
+    for f in fc.get("features", []):
+        v = f.get("properties", {}).get(field)
+        if v is not None and str(v).strip():
+            try:
+                f["properties"][f"_num"] = float(parse_num(v))
+                has_val.append(f)
+            except (ValueError, TypeError):
+                no_val.append(f)
+        else:
+            no_val.append(f)
+    return ({"type": "FeatureCollection", "features": has_val},
+            {"type": "FeatureCollection", "features": no_val})
+
+
+def max_voltage(v: str) -> float:
+    """Parse '400000;110000' → max value."""
+    return max(float(x) for x in str(v).replace(" ", "").split(";") if x)
 
 
 def main():
@@ -47,6 +69,12 @@ def main():
     natura = load(CLIP_DIR / f"{prefix}_natura2000.geojson", "Natura2000")
     exclusion = load(EXCL_DIR / f"{prefix}_exclusion_zones.geojson", "Exclusions")
     buffer = load(OUT_DIR / f"{prefix}_buffer.geojson", "Buffer")
+
+    # Split OSM substations: those with voltage → choropleth, rest → plain
+    sub_has, sub_no = split_by_field(substations, "voltage", max_voltage)
+
+    # Split power plants: those with output → choropleth, rest → plain
+    pp_has, pp_no = split_by_field(power_plants, "generator:output:electricity", float)
 
     m = Map(center=CENTER, zoom=9, basemap="bright", layout="embed", height="700px")
 
@@ -69,23 +97,45 @@ def main():
                       fillColor="#8e44ad", fillOpacity=0.05,
                       popup=["kiinteistotunnus", "area_ha"])
 
-    m.add_choropleth(fingrid, column="Kulutus_25", name="Fingrid (MW headroom)",
-                     class_count=5, colormap="YlOrRd", scheme="quantile",
-                     circleRadius=10, textField="{Kulutus_25} MW", textSize=10,
-                     textColor="#333", textHaloColor="#fff", textHaloWidth=1,
+    # ── Fingrid substations — green intensity by MW headroom ──
+    m.add_choropleth(fingrid, column="Kulutus_25", name="Fingrid substations (MW)",
+                     class_count=5, colormap="Greens", scheme="quantile",
+                     circleRadius=12, textField="{Kulutus_25} MW", textSize=10,
+                     textColor="#006400", textHaloColor="#fff", textHaloWidth=1,
                      popup=["SA", "Tyyppi", "Kulutus_25"])
 
+    # ── OSM substations with voltage → green intensity by kV level ──
+    if sub_has["features"]:
+        m.add_choropleth(sub_has, column="_num", name="Substations (OSM) by voltage",
+                         class_count=5, colormap="Greens", scheme="quantile",
+                         circleRadius=8, textField="{voltage}", textSize=9,
+                         textColor="#006400", textHaloColor="#fff", textHaloWidth=1,
+                         popup=["name", "voltage"])
+    # OSM substations without voltage — keep symbol, no color/label
+    if sub_no["features"]:
+        m.add_geojson(sub_no, name="Substations (OSM, no voltage)",
+                      strokeColor="#999", strokeWidth=1,
+                      fillColor="rgba(0,0,0,0)", circleRadius=5,
+                      popup=["name"])
+
+    # ── Power lines ──
     m.add_geojson(power_lines, name="Power lines", strokeColor="#e74c3c",
                   strokeWidth=2, popup=["voltage", "name", "operator"])
-    m.add_geojson(substations, name="Substations (OSM)", strokeColor="#3498db",
-                  circleRadius=6, textField="{voltage}", textSize=9,
-                  textColor="#2980b9", textHaloColor="#fff", textHaloWidth=1,
-                  popup=["name", "voltage"])
-    m.add_geojson(power_plants, name="Power plants", strokeColor="#2ecc71",
-                  circleRadius=8, textField="{generator:output:electricity}",
-                  textSize=9, textColor="#27ae60", textHaloColor="#fff",
-                  textHaloWidth=1,
-                  popup=["name", "generator:source", "generator:output:electricity"])
+
+    # ── Power plants with output → green intensity by MW ──
+    if pp_has["features"]:
+        m.add_choropleth(pp_has, column="_num", name="Power plants by output (MW)",
+                         class_count=5, colormap="Greens", scheme="quantile",
+                         circleRadius=10, textField="{generator:output:electricity}",
+                         textSize=9, textColor="#006400", textHaloColor="#fff",
+                         textHaloWidth=1,
+                         popup=["name", "generator:source", "generator:output:electricity"])
+    # Power plants without output — keep symbol
+    if pp_no["features"]:
+        m.add_geojson(pp_no, name="Power plants (no output data)",
+                      strokeColor="#2ecc71", strokeWidth=1,
+                      fillColor="rgba(0,0,0,0)", circleRadius=6,
+                      popup=["name", "generator:source"])
 
     if datacenters["features"]:
         m.add_geojson(datacenters, name="Data centers", strokeColor="#9b59b6",
