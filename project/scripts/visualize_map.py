@@ -76,7 +76,7 @@ def main():
     # Split power plants: those with output → choropleth
     pp_has, _ = split_by_field(power_plants, "generator:output:electricity", float)
 
-    m = Map(center=CENTER, zoom=9, basemap="bright", layout="embed", height="700px")
+    m = Map(center=CENTER, zoom=9, basemap="positron", layout="embed", height="700px")
 
     if buffer["features"]:
         m.add_geojson(buffer, name=f"Buffer ({AOI_BUFFER_KM}km)",
