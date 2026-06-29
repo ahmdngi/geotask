@@ -37,6 +37,8 @@ CLIP_DIR = ROOT / "data" / "etl" / "clipped"
 EXCL_DIR = ROOT / "data" / "etl" / "exclusions"
 SUIT_DIR = ROOT / "data" / "etl" / "suitability"
 OUT_DIR = ROOT / "data" / "etl" / "suitability"
+FINAL_DIR = ROOT / "outputs"          # deliverables for the dev team
+TOP_N = 20                              # top candidates exported to outputs/
 
 TARGET_CRS = "EPSG:3067"
 WGS84 = "EPSG:4326"
@@ -153,7 +155,7 @@ def main():
     # 5. Load reference layers for scoring
     fgrid = load_gdf(CLIP_DIR / f"{prefix}_fingrid_substations.geojson", "Fingrid")
     lines = load_gdf(CLIP_DIR / f"{prefix}_osm_power_lines.geojson", "Power lines")
-    urban = load_gdf(CLIP_DIR / f"{prefix}_urban_centers.geojson", "Urban centers")
+    urban = load_gdf(CLIP_DIR / f"{prefix}_osm_urban_centers.geojson", "Urban centers")
     dcs = load_gdf(CLIP_DIR / f"{prefix}_datacentermap.geojson", "Data centers")
     plants = load_gdf(CLIP_DIR / f"{prefix}_osm_power_plants.geojson", "Power plants")
 
@@ -308,6 +310,25 @@ def main():
     stats_path = OUT_DIR / f"{prefix}_scored_parcels_stats.json"
     stats_path.write_text(json.dumps(stats, indent=2), encoding="utf-8")
     print(f"Stats: {stats_path.name}")
+
+    # ── Deliverables: top-N candidates → outputs/ ──
+    FINAL_DIR.mkdir(parents=True, exist_ok=True)
+    top = out.head(TOP_N).copy()
+    top.insert(0, "rank", range(1, len(top) + 1))
+
+    # candidates.geojson (top-N parcels with scores)
+    cand_path = FINAL_DIR / "candidates.geojson"
+    top.to_file(cand_path, driver="GeoJSON", encoding="utf-8")
+    print(f"Output: {cand_path.name} ({len(top)} candidates)")
+
+    # candidate_scores.csv (ranked table, no geometry)
+    cols = ["rank", "kiinteistotunnus", "mcdm_score", "area_ha",
+            "score_grid", "score_hv", "score_urban", "score_dc",
+            "score_gen", "score_size", "score_zoning"]
+    cols = [c for c in cols if c in top.columns]
+    csv_path = FINAL_DIR / "candidate_scores.csv"
+    top[cols].to_csv(csv_path, index=False, encoding="utf-8")
+    print(f"Output: {csv_path.name} ({len(top)} rows)")
 
     if raster is not None:
         raster.close()

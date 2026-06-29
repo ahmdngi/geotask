@@ -13,6 +13,7 @@ import numpy as np
 import rasterio
 from rasterio.io import MemoryFile
 from rasterio.merge import merge
+from rasterio.warp import calculate_default_transform, reproject, Resampling
 from scipy.ndimage import sobel
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -115,8 +116,29 @@ def main():
     mb = out.stat().st_size / 1e6
     print(f"  Saved: {out.name} ({mb:.1f} MB)")
 
+    reproject_to_web(out)
+
     total = time.time() - t0
     print(f"\nDone in {total:.0f}s")
+
+
+def reproject_to_web(src_path: Path, dst_crs: str = "EPSG:4326") -> Path:
+    """Reproject the suitability mask to a web COG for plotting; keep the original."""
+    dst_path = src_path.with_name(src_path.stem + "_web.tiff")
+    with rasterio.open(src_path) as src:
+        transform, width, height = calculate_default_transform(
+            src.crs, dst_crs, src.width, src.height, *src.bounds)
+        prof = src.profile.copy()
+        prof.update(crs=dst_crs, transform=transform, width=width, height=height,
+                    tiled=True, blockxsize=256, blockysize=256, compress="lzw", nodata=0)
+        with rasterio.open(dst_path, "w", **prof) as dst:
+            reproject(rasterio.band(src, 1), rasterio.band(dst, 1),
+                      src_transform=src.transform, src_crs=src.crs,
+                      dst_transform=transform, dst_crs=dst_crs,
+                      resampling=Resampling.nearest)
+            dst.build_overviews([2, 4, 8, 16], Resampling.nearest)
+    print(f"  Saved: {dst_path.name} ({dst_path.stat().st_size / 1e6:.1f} MB, {dst_crs})")
+    return dst_path
 
 
 if __name__ == "__main__":
