@@ -57,26 +57,29 @@ Get a free MML key at [omatili.maanmittauslaitos.fi](https://omatili.maanmittaus
 echo '{"MML_KEY": "your-key-here"}' > config/keys.json
 ```
 
-### 2. Fetch data
+### Run with Docker (recommended)
+
+No system GDAL needed — wheels bundle it. From the repo root:
 
 ```bash
-# Pick a city interactively — runs all fetch scripts on save:
-python scripts/city_picker.py
+docker build -t geotask:latest .                          # core pipeline
+docker build --build-arg WITH_PLAYWRIGHT=1 -t geotask .   # + data-center scraper
 
-# Or manually:
-python scripts/fetch_all.py
+# fetch → ETL + scoring → map (outputs land in project/outputs/)
+MML_KEY=your-key docker compose run --rm pipeline python scripts/fetch_all.py
+docker compose up
 ```
 
-### 3. Run ETL
+`data/`, `outputs/`, `config/` are volume-mounted, so results persist on the host.
+
+### Run manually
 
 ```bash
-python scripts/run_etl.py
-```
-
-### 4. View map
-
-```bash
-python scripts/visualize_map.py
+pip install -r requirements.txt
+playwright install chromium      # only for fetch_datacentermap.py
+python scripts/fetch_all.py      # fetch layers
+python scripts/run_etl.py        # clip, slope, exclusions, QC, scoring
+python scripts/visualize_map.py  # interactive map
 ```
 
 Scoring runs as the last ETL step and writes the deliverables to `outputs/`. The map writes to both `data/etl/<City>_FINLAND_map.html` and `outputs/final_map.html`.
@@ -132,13 +135,9 @@ Weighted sum (Σw = 1.0). Missing dims default to neutral 5.0. Ranked top-20 →
 
 ## Dependencies
 
-```
-geopandas pyproj shapely requests rasterio scipy numpy geolibre playwright
-```
-
-Install:
+Core deps are pinned in [requirements.txt](requirements.txt): geopandas, rasterio, shapely, pyproj, requests, scipy, numpy, pandas, geolibre. Playwright (+ Chromium) is optional and only needed for the data-center scraper.
 
 ```bash
-pip install geopandas pyproj shapely requests rasterio scipy numpy geolibre
-playwright install chromium
+pip install -r requirements.txt
+playwright install chromium   # optional
 ```

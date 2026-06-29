@@ -96,10 +96,15 @@ def main():
                       fillColor="#1abc9c", fillOpacity=0.12, strokeWidth=1,
                       popup=["SITENAME", "SITETYPE", "SITECODE"])
 
-    # ── Scored parcels: red→green graduated by MCDM score ──
+    # ── Scored parcels: graduated by MCDM score (viridis) ──
+    smin, smax = 4.8, 7.9
     if scored["features"]:
+        vals = [f["properties"].get("mcdm_score") for f in scored["features"]
+                if f["properties"].get("mcdm_score") is not None]
+        if vals:
+            smin, smax = min(vals), max(vals)
         m.add_choropleth(scored, column="mcdm_score", name="Parcel score (MCDM)",
-                         class_count=5, colormap="RdYlGn", scheme="quantile",
+                         class_count=5, colormap="viridis", scheme="quantile",
                          fillOpacity=0.55, strokeColor="#555", strokeWidth=0.4,
                          popup=["kiinteistotunnus", "mcdm_score", "area_ha",
                                 "score_grid", "score_hv", "score_urban",
@@ -161,7 +166,7 @@ def main():
         "Urban center": "#f39c12",
         "Exclusion / flood": "#e74c3c",
     }, position="bottom-left")
-    m.add_colorbar(colormap="RdYlGn", vmin=4.8, vmax=7.5,
+    m.add_colorbar(colormap="viridis", vmin=round(smin, 1), vmax=round(smax, 1),
                    label="Parcel suitability (MCDM)", position="bottom-right")
 
     html = m.to_html(width="100%", height="720px",
