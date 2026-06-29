@@ -20,6 +20,7 @@ STEPS = [
     ("Clip to AOI", [sys.executable, str(ETL_DIR / "clip_to_aoi.py")]),
     ("Merge exclusions", [sys.executable, str(ETL_DIR / "merge_exclusions.py")]),
     ("QC Report", [sys.executable, str(ETL_DIR / "qc_report.py")]),
+    ("Score parcels", [sys.executable, str(ROOT / "scoring" / "score_parcels.py")]),
 ]
 
 
